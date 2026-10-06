@@ -1,0 +1,19 @@
+{
+  "name": "biovault-backend",
+  "version": "1.0.0",
+  "description": "BioVault-AI Enterprise Express 5 Gateway with RS256 Cryptography & WebAuthn",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^5.0.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "jsonwebtoken": "^9.0.2",
+    "@simplewebauthn/server": "^13.1.1",
+    "cookie-parser": "^1.4.7",
+    "axios": "^1.7.9"
+  }
+}
