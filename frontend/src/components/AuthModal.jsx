@@ -514,6 +514,13 @@ export default function AuthModal({
           stopCamera();
           if (onAuthenticated) onAuthenticated(verifyRes.data.user);
           setTimeout(() => onClose(), 800);
+        } else if (verifyRes.status === 423 || verifyRes.data?.isLocked) {
+          stopCamera();
+          setResultMessage({
+            type: 'error',
+            text: `🛑 Security Lockdown: Face authentication failed 3 consecutive times! Website is blocked right away.`
+          });
+          setTimeout(() => onClose(), 1200);
         } else if (verifyRes.status === 404 || verifyRes.data?.error?.includes('No enrolled biometric')) {
           setResultMessage({
             type: 'info',
@@ -522,7 +529,7 @@ export default function AuthModal({
         } else {
           setResultMessage({
             type: 'error',
-            text: `❌ Biometric Mismatch Rejected (${elapsed}ms): Distance D=${dist || 'High'} ≥ 0.30 threshold. This face does not match the registered account holder.`
+            text: `❌ Biometric Mismatch Rejected (${elapsed}ms): Distance D=${dist || 'High'} ≥ 0.30 threshold. (${verifyRes.data?.failedAttempts || 1}/3 failed attempts).`
           });
         }
       }

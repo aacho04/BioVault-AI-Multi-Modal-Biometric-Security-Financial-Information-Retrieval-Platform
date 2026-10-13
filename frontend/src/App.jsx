@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from './components/Navbar';
 import AuthModal from './components/AuthModal';
 import Dashboard from './pages/Dashboard';
 import DeepLearningLab from './pages/DeepLearningLab';
 import IRSearch from './pages/IRSearch';
-import { ShieldCheck, Eye, Lock, Key, Mail, Sparkles, CheckCircle2, ArrowRight, RefreshCw, Smartphone, KeyRound, Cpu, ShieldAlert, Check, Trash2, RotateCcw, AlertOctagon, Clock } from 'lucide-react';
+import { ShieldCheck, Eye, Lock, Key, Mail, Sparkles, CheckCircle2, ArrowRight, RefreshCw, Smartphone, KeyRound, Cpu, ShieldAlert, Check, Trash2, RotateCcw, AlertOctagon, Clock, Camera } from 'lucide-react';
 import { startRegistration } from '@simplewebauthn/browser';
+import { extractBiometricVectorFromVideo, extractBiometricVectorWithJitter } from './utils/faceBiometrics';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -83,31 +84,104 @@ export default function App() {
     }
   }, []);
 
-  const handleUnlockAccount = async () => {
-    setLoading(true);
+  const [appUnblockCameraActive, setAppUnblockCameraActive] = useState(false);
+  const [isAppVerifyingFace, setIsAppVerifyingFace] = useState(false);
+  const [appUnblockStatus, setAppUnblockStatus] = useState(null);
+  const appUnblockVideoRef = useRef(null);
+  const appUnblockStreamRef = useRef(null);
+
+  const startAppUnblockCamera = async () => {
     try {
-      const res = await safeJsonFetch('/api/auth/unlock-account', {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+      });
+      appUnblockStreamRef.current = stream;
+      if (appUnblockVideoRef.current) {
+        appUnblockVideoRef.current.srcObject = stream;
+        appUnblockVideoRef.current.play();
+      }
+      setAppUnblockCameraActive(true);
+      setAppUnblockStatus(null);
+    } catch (e) {
+      setAppUnblockStatus({ type: 'error', text: 'Camera access denied. Please allow webcam permissions to verify your face.' });
+    }
+  };
+
+  const stopAppUnblockCamera = () => {
+    if (appUnblockStreamRef.current) {
+      appUnblockStreamRef.current.getTracks().forEach(t => t.stop());
+      appUnblockStreamRef.current = null;
+    }
+    setAppUnblockCameraActive(false);
+  };
+
+  useEffect(() => {
+    if (accountLockout?.isLocked && !appUnblockCameraActive) {
+      startAppUnblockCamera();
+    }
+  }, [accountLockout?.isLocked]);
+
+  // Periodic lock status polling every 4 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      checkAccountLockStatus(loginEmail);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [loginEmail]);
+
+  const handleUnlockAccountWithFace = async () => {
+    setIsAppVerifyingFace(true);
+    setAppUnblockStatus(null);
+
+    try {
+      if (!appUnblockVideoRef.current) {
+        setAppUnblockStatus({ type: 'error', text: 'Camera not ready. Please start camera first.' });
+        setIsAppVerifyingFace(false);
+        return;
+      }
+
+      let candidateDescriptor = await extractBiometricVectorWithJitter(appUnblockVideoRef.current, 3);
+      if (!candidateDescriptor) {
+        candidateDescriptor = extractBiometricVectorFromVideo(appUnblockVideoRef.current);
+      }
+      if (!candidateDescriptor) {
+        setAppUnblockStatus({ type: 'error', text: 'Face not detected in frame. Please look directly into the camera oval.' });
+        setIsAppVerifyingFace(false);
+        return;
+      }
+
+      const res = await safeJsonFetch('/api/auth/unlock-with-face', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: loginEmail })
+        body: JSON.stringify({
+          email: loginEmail,
+          userId: 'usr_biovault_01',
+          candidateDescriptor,
+          threshold: 0.55
+        })
       });
-      if (res.ok) {
+
+      if (res.ok && res.data?.verified) {
+        stopAppUnblockCamera();
         setAccountLockout(null);
-        // Clear ?locked=true from browser address bar
+        setAppUnblockStatus(null);
         try {
           window.history.replaceState({}, document.title, window.location.pathname);
         } catch (e) {}
         setStatusMsg({
           type: 'success',
-          text: '🔓 Account successfully unblocked! You can now proceed with authentication.'
+          text: '🔓 Identity Confirmed! Account successfully unblocked.'
         });
       } else {
-        setStatusMsg({ type: 'error', text: res.data?.error || 'Failed to unblock account.' });
+        setAppUnblockStatus({
+          type: 'error',
+          text: res.data?.error || `❌ Biometric Mismatch: Distance (D=${res.data?.euclideanDistance || 'High'}) ≥ 0.55. Unauthorized face detected! Website remains locked.`
+        });
       }
     } catch (err) {
-      setStatusMsg({ type: 'error', text: err.message });
+      setAppUnblockStatus({ type: 'error', text: 'Verification error: ' + err.message });
     } finally {
-      setLoading(false);
+      setIsAppVerifyingFace(false);
     }
   };
 
@@ -428,7 +502,9 @@ export default function App() {
                   🔒 ACCOUNT FROZEN (5-Hour Security Lock Active)
                 </h2>
                 <p style={{ color: '#cbd5e1', fontSize: '0.88rem', maxWidth: 480, margin: '0 auto 1.25rem auto', lineHeight: 1.5 }}>
-                  You reported an unauthorized biometric face attempt. As requested, all outgoing transfers, logins, and changes have been immediately frozen for 5 hours.
+                  Multiple failed authentications or an unauthorized biometric face attempt was detected.
+                  This website is <strong>blocked right away</strong>. Registration is strictly disabled.
+                  You can unblock this website using <strong>Face Authentication only</strong>.
                 </p>
 
                 <div style={{ background: 'rgba(3, 7, 18, 0.8)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', padding: '1rem', maxWidth: 440, margin: '0 auto 1.5rem auto', textAlign: 'left' }}>
@@ -443,20 +519,127 @@ export default function App() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem' }}>
-                  <button
-                    onClick={handleUnlockAccount}
-                    disabled={loading}
-                    className="btn-primary"
-                    style={{
-                      background: 'linear-gradient(135deg, #10b981 0%, #06b6d4 100%)',
-                      padding: '0.75rem 1.5rem',
-                      fontSize: '0.88rem'
-                    }}
-                  >
-                    {loading ? <RefreshCw size={16} className="animate-spin" /> : <KeyRound size={16} />}
-                    Unlock Account Now (Owner / Test Override)
-                  </button>
+                {/* Face Authentication Unblock Unit */}
+                <div style={{
+                  background: 'rgba(15, 23, 42, 0.85)',
+                  border: '1px solid rgba(6, 182, 212, 0.3)',
+                  borderRadius: '12px',
+                  padding: '1.25rem',
+                  maxWidth: 440,
+                  margin: '0 auto 1rem auto'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    color: '#38bdf8',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    marginBottom: '1rem'
+                  }}>
+                    <Camera size={18} /> Face Authentication Unblock (Registered Owner Only)
+                  </div>
+
+                  <div style={{
+                    position: 'relative',
+                    width: '100%',
+                    aspectRatio: '4/3',
+                    borderRadius: '10px',
+                    overflow: 'hidden',
+                    margin: '0 auto 1rem auto',
+                    background: '#020617',
+                    border: '1px solid rgba(255, 255, 255, 0.1)'
+                  }}>
+                    <video
+                      ref={appUnblockVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        transform: 'scaleX(-1)'
+                      }}
+                    />
+                    <div style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      width: '60%',
+                      height: '76%',
+                      border: '2px dashed #06b6d4',
+                      borderRadius: '50%',
+                      pointerEvents: 'none',
+                      boxShadow: '0 0 15px rgba(6, 182, 212, 0.25)'
+                    }} />
+                    <div style={{
+                      position: 'absolute',
+                      bottom: 8,
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      background: 'rgba(0,0,0,0.75)',
+                      color: '#38bdf8',
+                      fontSize: '0.72rem',
+                      padding: '4px 10px',
+                      borderRadius: '20px',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      Look directly into camera oval to unblock
+                    </div>
+                  </div>
+
+                  {appUnblockStatus && (
+                    <div style={{
+                      padding: '0.65rem 0.85rem',
+                      borderRadius: '8px',
+                      background: appUnblockStatus.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                      border: `1px solid ${appUnblockStatus.type === 'error' ? '#ef4444' : '#10b981'}`,
+                      color: appUnblockStatus.type === 'error' ? '#f87171' : '#34d399',
+                      fontSize: '0.82rem',
+                      marginBottom: '1rem',
+                      textAlign: 'center'
+                    }}>
+                      {appUnblockStatus.text}
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+                    {!appUnblockCameraActive && (
+                      <button
+                        type="button"
+                        onClick={startAppUnblockCamera}
+                        className="btn-secondary"
+                        style={{ padding: '0.75rem 1.25rem', fontSize: '0.88rem' }}
+                      >
+                        <Camera size={16} /> Start Camera
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleUnlockAccountWithFace}
+                      disabled={isAppVerifyingFace}
+                      className="btn-primary"
+                      style={{
+                        background: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
+                        padding: '0.75rem 1.5rem',
+                        fontSize: '0.9rem',
+                        fontWeight: 700
+                      }}
+                    >
+                      {isAppVerifyingFace ? (
+                        <>
+                          <RefreshCw size={16} className="animate-spin" /> Verifying Biometric Face...
+                        </>
+                      ) : (
+                        <>
+                          <Eye size={16} /> Authenticate Face to Unblock
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (

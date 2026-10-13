@@ -21,6 +21,7 @@ router.get('/confirm-unauthorized', authController.confirmUnauthorizedAccess);
 router.post('/confirm-unauthorized', authController.confirmUnauthorizedAccess);
 router.get('/lock-status', authController.getLockStatus);
 router.post('/unlock-account', authController.unlockAccount);
+router.post('/unlock-with-face', authController.unlockWithFace);
 
 router.get('/profile', authMiddleware, authController.getProfile);
 

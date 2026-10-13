@@ -62,14 +62,125 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
   const thresholdVideoRef = useRef(null);
   const thresholdStreamRef = useRef(null);
 
-  // Load transactions, recommendations, stored threshold, and run initial screener on mount
+  // 5-Hour Security Lockdown State - Website Blocked right away
+  const [isWebsiteLocked, setIsWebsiteLocked] = useState(false);
+  const [lockoutData, setLockoutData] = useState(null);
+  const [unblockCameraActive, setUnblockCameraActive] = useState(false);
+  const [isVerifyingUnblockFace, setIsVerifyingUnblockFace] = useState(false);
+  const [unblockStatus, setUnblockStatus] = useState(null);
+  const unblockVideoRef = useRef(null);
+  const unblockStreamRef = useRef(null);
+
+  const checkWebsiteLockStatus = async () => {
+    try {
+      const res = await fetch(`/api/auth/lock-status?email=${encodeURIComponent(userEmail || 'alex.vance@biovault.ai')}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.isLocked) {
+          setIsWebsiteLocked(true);
+          setLockoutData(data);
+        } else if (!data.isLocked && isWebsiteLocked) {
+          setIsWebsiteLocked(false);
+          setLockoutData(null);
+        }
+      }
+    } catch (e) {}
+  };
+
+  const startUnblockCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+      });
+      unblockStreamRef.current = stream;
+      if (unblockVideoRef.current) {
+        unblockVideoRef.current.srcObject = stream;
+        unblockVideoRef.current.play();
+      }
+      setUnblockCameraActive(true);
+      setUnblockStatus(null);
+    } catch (e) {
+      setUnblockStatus({ type: 'error', text: 'Camera access denied. Please allow camera permissions to verify identity and unblock.' });
+    }
+  };
+
+  const stopUnblockCamera = () => {
+    if (unblockStreamRef.current) {
+      unblockStreamRef.current.getTracks().forEach(track => track.stop());
+      unblockStreamRef.current = null;
+    }
+    setUnblockCameraActive(false);
+  };
+
+  useEffect(() => {
+    if (isWebsiteLocked && !unblockCameraActive) {
+      startUnblockCamera();
+    }
+  }, [isWebsiteLocked]);
+
+  const handleVerifyFaceToUnblock = async () => {
+    setIsVerifyingUnblockFace(true);
+    setUnblockStatus(null);
+
+    try {
+      if (!unblockVideoRef.current) {
+        setUnblockStatus({ type: 'error', text: 'Camera not ready. Please start camera first.' });
+        setIsVerifyingUnblockFace(false);
+        return;
+      }
+
+      let candidateDescriptor = await extractBiometricVectorWithJitter(unblockVideoRef.current, 3);
+      if (!candidateDescriptor) {
+        candidateDescriptor = extractBiometricVectorFromVideo(unblockVideoRef.current);
+      }
+      if (!candidateDescriptor) {
+        setUnblockStatus({ type: 'error', text: 'Face not detected in frame. Please look directly into the camera oval.' });
+        setIsVerifyingUnblockFace(false);
+        return;
+      }
+
+      const targetEmail = userEmail || 'alex.vance@biovault.ai';
+      const res = await fetch('/api/auth/unlock-with-face', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: targetEmail,
+          userId: 'usr_biovault_01',
+          candidateDescriptor,
+          threshold: 0.55
+        })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.verified) {
+        stopUnblockCamera();
+        setIsWebsiteLocked(false);
+        setLockoutData(null);
+        setUnblockStatus(null);
+      } else {
+        setUnblockStatus({
+          type: 'error',
+          text: data.error || `❌ Biometric Mismatch: Distance (D=${data.euclideanDistance || 'High'}) ≥ 0.55. Unauthorized face detected! Website remains strictly locked.`
+        });
+      }
+    } catch (err) {
+      setUnblockStatus({ type: 'error', text: 'Verification error: ' + err.message });
+    } finally {
+      setIsVerifyingUnblockFace(false);
+    }
+  };
+
+  // Load transactions, recommendations, stored threshold, and check lock status on mount
   useEffect(() => {
     fetchTransactions();
     fetchRecommendations();
     fetchStoredThreshold();
     evaluateGmm(Number(amount));
     evaluateAnomaly(Number(amount), Number(velocity));
-  }, []);
+    checkWebsiteLockStatus();
+    const interval = setInterval(checkWebsiteLockStatus, 4000);
+    return () => clearInterval(interval);
+  }, [userEmail]);
 
   const fetchStoredThreshold = async () => {
     try {
@@ -273,6 +384,14 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
       }
 
       if (!res.ok) {
+        if (res.status === 423 || data.isLocked) {
+          setIsPinModalOpen(false);
+          stopTransferCamera();
+          setIsWebsiteLocked(true);
+          setLockoutData(data.lockStatus || { remainingHours: 5, blockedUntil: new Date(Date.now() + 5 * 3600 * 1000).toISOString() });
+          setIsVerifyingPin(false);
+          return;
+        }
         setPinError(data.error || 'Incorrect Security PIN. Please try again.');
         setIsVerifyingPin(false);
         return;
@@ -338,7 +457,15 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
       const verifyData = await verifyRes.json();
 
       if (!verifyRes.ok || !verifyData.verified) {
-        setPinError(verifyData.message || verifyData.error || `❌ Biometric Mismatch: Distance (D=${verifyData.euclideanDistance || 'High'}) ≥ 0.55. Unauthorized face detected! Security Alert Email sent with protection.`);
+        if (verifyRes.status === 423 || verifyData.isLocked) {
+          stopTransferCamera();
+          setIsPinModalOpen(false);
+          setIsWebsiteLocked(true);
+          setLockoutData(verifyData.lockStatus || { remainingHours: 5, blockedUntil: new Date(Date.now() + 5 * 3600 * 1000).toISOString() });
+          setIsVerifyingTransferFace(false);
+          return;
+        }
+        setPinError(verifyData.message || verifyData.error || `❌ Biometric Mismatch: Distance (D=${verifyData.euclideanDistance || 'High'}) ≥ 0.55. Unauthorized face detected!`);
         setIsVerifyingTransferFace(false);
         return;
       }
@@ -368,51 +495,17 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
           setTransferStage('pin');
         }, 1500);
       } else {
+        if (txRes.status === 423 || txData.isLocked) {
+          stopTransferCamera();
+          setIsPinModalOpen(false);
+          setIsWebsiteLocked(true);
+          setLockoutData(txData.lockStatus || { remainingHours: 5, blockedUntil: new Date(Date.now() + 5 * 3600 * 1000).toISOString() });
+          return;
+        }
         setPinError(txData.error || 'Biometric authorization could not be completed.');
       }
     } catch (err) {
       setPinError(err.message || 'Face authentication error');
-    } finally {
-      setIsVerifyingTransferFace(false);
-    }
-  };
-
-  const handleQuickReEnrollFace = async () => {
-    setIsVerifyingTransferFace(true);
-    setPinError(null);
-    setPinSuccess(null);
-
-    try {
-      let candidateDescriptor = await extractBiometricVectorWithJitter(transferVideoRef.current, 3);
-      if (!candidateDescriptor) {
-        candidateDescriptor = extractBiometricVectorFromVideo(transferVideoRef.current);
-      }
-      if (!candidateDescriptor) {
-        setPinError('Camera frame not ready. Please look directly into the camera oval.');
-        setIsVerifyingTransferFace(false);
-        return;
-      }
-
-      const targetEmail = userEmail || 'alex.vance@biovault.ai';
-      const res = await fetch('/api/auth/facecard/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: 'usr_biovault_01',
-          email: targetEmail,
-          descriptor: candidateDescriptor
-        })
-      });
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        setPinSuccess('⚡ Face Biometric Template Freshly Enrolled! Now scroll down and click "Scan Face & Settle Funds" to complete your transfer.');
-        setPinError(null);
-      } else {
-        setPinError(data.error || 'Failed to re-enroll face template.');
-      }
-    } catch (err) {
-      setPinError('Re-enrollment error: ' + err.message);
     } finally {
       setIsVerifyingTransferFace(false);
     }
@@ -734,6 +827,213 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
     setPinUpdateStep(1);
     setChangePinStatus(null);
   };
+
+  if (isWebsiteLocked) {
+    return (
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 999999,
+        background: 'rgba(3, 7, 18, 0.98)',
+        backdropFilter: 'blur(20px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.5rem',
+        overflowY: 'auto'
+      }}>
+        <div className="glass-panel" style={{
+          width: '100%',
+          maxWidth: 620,
+          padding: '2.5rem',
+          border: '2px solid #ef4444',
+          background: 'rgba(239, 68, 68, 0.08)',
+          boxShadow: '0 12px 48px rgba(239, 68, 68, 0.35)',
+          textAlign: 'center'
+        }}>
+          <div style={{
+            display: 'inline-flex',
+            padding: '1rem',
+            background: 'rgba(239, 68, 68, 0.2)',
+            borderRadius: '50%',
+            marginBottom: '1rem',
+            border: '2px solid #ef4444'
+          }}>
+            <ShieldAlert size={44} color="#ef4444" />
+          </div>
+
+          <h1 className="font-heading" style={{
+            color: '#fca5a5',
+            fontSize: '1.65rem',
+            fontWeight: 800,
+            marginBottom: '0.65rem'
+          }}>
+            🛑 SECURITY LOCKDOWN: WEBSITE BLOCKED
+          </h1>
+
+          <p style={{
+            color: '#cbd5e1',
+            fontSize: '0.92rem',
+            maxWidth: 520,
+            margin: '0 auto 1.5rem auto',
+            lineHeight: 1.6
+          }}>
+            Multiple failed biometric authentication attempts were detected.
+            This website has been <strong>blocked right away</strong> to protect your funds and financial data.
+            Registration is strictly disabled. You can unblock this website using <strong>Face Authentication only</strong>.
+          </p>
+
+          <div style={{
+            background: 'rgba(3, 7, 18, 0.85)',
+            border: '1px solid rgba(239, 68, 68, 0.35)',
+            borderRadius: '10px',
+            padding: '1rem',
+            maxWidth: 480,
+            margin: '0 auto 1.5rem auto',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lock Protocol</div>
+              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#f87171' }}>5-Hour Biometric Freeze</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Auto-Unlock</div>
+              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fbbf24', fontFamily: 'JetBrains Mono, monospace' }}>
+                ~{lockoutData?.remainingHours || 5} Hours
+              </div>
+            </div>
+          </div>
+
+          {/* Live Face Authentication Unblock Section */}
+          <div style={{
+            background: 'rgba(15, 23, 42, 0.8)',
+            border: '1px solid rgba(6, 182, 212, 0.3)',
+            borderRadius: '12px',
+            padding: '1.25rem',
+            marginBottom: '1.5rem'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              color: '#38bdf8',
+              fontSize: '0.88rem',
+              fontWeight: 700,
+              marginBottom: '1rem'
+            }}>
+              <Camera size={18} /> Face Authentication Unblock (Registered Owner Only)
+            </div>
+
+            {/* Video Preview with Cyan Oval Guide */}
+            <div style={{
+              position: 'relative',
+              width: '100%',
+              maxWidth: 380,
+              aspectRatio: '4/3',
+              borderRadius: '10px',
+              overflow: 'hidden',
+              margin: '0 auto 1rem auto',
+              background: '#020617',
+              border: '1px solid rgba(255, 255, 255, 0.1)'
+            }}>
+              <video
+                ref={unblockVideoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  transform: 'scaleX(-1)'
+                }}
+              />
+              {/* Cyan Dotted Oval Guide HUD */}
+              <div style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '60%',
+                height: '76%',
+                border: '2px dashed #06b6d4',
+                borderRadius: '50%',
+                pointerEvents: 'none',
+                boxShadow: '0 0 15px rgba(6, 182, 212, 0.25)'
+              }} />
+              <div style={{
+                position: 'absolute',
+                bottom: 8,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                background: 'rgba(0,0,0,0.75)',
+                color: '#38bdf8',
+                fontSize: '0.72rem',
+                padding: '4px 10px',
+                borderRadius: '20px',
+                whiteSpace: 'nowrap'
+              }}>
+                Look directly into camera oval to unblock
+              </div>
+            </div>
+
+            {unblockStatus && (
+              <div style={{
+                padding: '0.65rem 0.85rem',
+                borderRadius: '8px',
+                background: unblockStatus.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                border: `1px solid ${unblockStatus.type === 'error' ? '#ef4444' : '#10b981'}`,
+                color: unblockStatus.type === 'error' ? '#f87171' : '#34d399',
+                fontSize: '0.82rem',
+                marginBottom: '1rem',
+                textAlign: 'center'
+              }}>
+                {unblockStatus.text}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+              {!unblockCameraActive && (
+                <button
+                  type="button"
+                  onClick={startUnblockCamera}
+                  className="btn-secondary"
+                  style={{ padding: '0.75rem 1.25rem', fontSize: '0.88rem' }}
+                >
+                  <Camera size={16} /> Start Camera
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleVerifyFaceToUnblock}
+                disabled={isVerifyingUnblockFace}
+                className="btn-primary"
+                style={{
+                  background: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
+                  padding: '0.75rem 1.5rem',
+                  fontSize: '0.9rem',
+                  fontWeight: 700
+                }}
+              >
+                {isVerifyingUnblockFace ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" /> Verifying Biometric Face...
+                  </>
+                ) : (
+                  <>
+                    <Eye size={16} /> Authenticate Face to Unblock
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container-custom" style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
@@ -1435,31 +1735,9 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
                     border: '1px solid #ef4444',
                     color: '#f87171',
                     fontSize: '0.82rem',
-                    textAlign: 'center',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '0.5rem'
+                    textAlign: 'center'
                   }}>
-                    <div>{pinError}</div>
-                    <button
-                      type="button"
-                      onClick={handleQuickReEnrollFace}
-                      disabled={isVerifyingTransferFace}
-                      className="btn-secondary"
-                      style={{
-                        padding: '0.45rem 0.75rem',
-                        fontSize: '0.76rem',
-                        borderColor: '#38bdf8',
-                        color: '#38bdf8',
-                        background: 'rgba(6, 182, 212, 0.12)',
-                        margin: '0 auto',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.35rem'
-                      }}
-                    >
-                      <RefreshCw size={13} /> Re-Enroll My Face Freshly (1-Click Update)
-                    </button>
+                    {pinError}
                   </div>
                 )}
 

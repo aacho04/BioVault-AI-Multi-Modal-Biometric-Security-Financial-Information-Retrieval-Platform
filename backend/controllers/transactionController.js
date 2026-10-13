@@ -151,9 +151,24 @@ exports.createTransaction = async (req, res) => {
     const isPinValid = store.verifyPin(userIdentifier, pin);
     if (!isPinValid) {
       const updatedFailures = store.recordFailedAttempt(userIdentifier);
+      if (updatedFailures >= 3) {
+        const lockRecord = store.lockAccount(
+          userIdentifier,
+          5,
+          'Account Blocked: 3 Consecutive Incorrect Security PIN Attempts'
+        );
+        return res.status(423).json({
+          success: false,
+          isLocked: true,
+          failedAttempts: updatedFailures,
+          lockStatus: lockRecord,
+          error: `🛑 SECURITY LOCKDOWN: Failed authentication ${updatedFailures} times! Website is BLOCKED right away. Face authentication is strictly required to unblock.`
+        });
+      }
       return res.status(401).json({
         success: false,
-        error: `Incorrect Security PIN. (${updatedFailures} consecutive failed attempt(s)). Transaction unauthorized.`
+        failedAttempts: updatedFailures,
+        error: `Incorrect Security PIN. (${updatedFailures}/3 failed attempt(s)). Transaction unauthorized.`
       });
     }
 

@@ -215,7 +215,26 @@ exports.verifyFacecard = async (req, res) => {
     const verified = euclideanDistance < effectiveThreshold;
 
     if (!verified) {
-      store.recordFailedAttempt(targetKey);
+      const failedCount = store.recordFailedAttempt(targetKey);
+
+      // Multiple failed attempts (3 or more) triggers immediate 5-hour security lockdown!
+      if (failedCount >= 3) {
+        const lockRecord = store.lockAccount(
+          targetKey,
+          5,
+          'Account Blocked: 3 Consecutive Biometric Face Mismatches Detected'
+        );
+        return res.status(423).json({
+          verified: false,
+          isLocked: true,
+          failedAttempts: failedCount,
+          lockStatus: lockRecord,
+          euclideanDistance: Number(euclideanDistance.toFixed(4)),
+          threshold,
+          message: `🛑 SECURITY LOCKDOWN: Authentication failed ${failedCount} times! Website is BLOCKED right now. Face authentication is strictly required to unblock.`,
+          error: `🛑 SECURITY LOCKDOWN: Authentication failed ${failedCount} times! Website is BLOCKED right now. Face authentication is strictly required to unblock.`
+        });
+      }
       
       // Dispatch immediate Unauthorized Access Security Alert Email with 5-Hour Lock confirmation link
       const lockToken = store.createLockToken(targetKey);
@@ -238,11 +257,13 @@ exports.verifyFacecard = async (req, res) => {
 
       return res.status(401).json({
         verified: false,
+        failedAttempts: failedCount,
+        remainingAttempts: Math.max(0, 3 - failedCount),
         euclideanDistance: Number(euclideanDistance.toFixed(4)),
         threshold,
         alertEmailSent: alertEmailResult.sent || alertEmailResult.simulated,
-        message: `Biometric Mismatch (Distance D=${euclideanDistance.toFixed(4)} ≥ ${threshold}). Unauthorized face detected! Security Alert Email has been sent to ${recipientEmail || 'your email'} with 1-click 5-hour freeze protection.`,
-        error: `Biometric Mismatch: Distance (D=${euclideanDistance.toFixed(4)}) ≥ ${threshold}. Unauthorized face detected! Only registered account holder can authorize this action.`
+        message: `Biometric Mismatch (Distance D=${euclideanDistance.toFixed(4)} ≥ ${threshold}). Unauthorized face detected! (${failedCount}/3 failed attempts). Security Alert Email sent to ${recipientEmail || 'your email'}.`,
+        error: `Biometric Mismatch: Distance (D=${euclideanDistance.toFixed(4)}) ≥ ${threshold}. Unauthorized face detected! (${failedCount}/3 failed attempts). Only registered account holder can authorize this action.`
       });
     }
 
@@ -276,15 +297,36 @@ exports.confirmUnauthorizedAccess = (req, res) => {
       'Unauthorized Biometric Face Access Attempt Confirmed by Account Holder via Email'
     );
 
-    // If request from browser (GET link from email), redirect to frontend locked alert page
+    // If request from browser (GET link from email), display confirmation without redirecting away
     if (req.accepts('html') && !req.xhr) {
-      return res.redirect(
-        `http://localhost:3000/?locked=true&email=${encodeURIComponent(targetKey)}&hours=5`
-      );
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>BioVault-AI Account Frozen</title>
+          <style>
+            body { background: #030712; color: #f8fafc; font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+            .card { background: #0f172a; border: 2px solid #ef4444; border-radius: 12px; padding: 2.5rem; text-align: center; max-width: 480px; box-shadow: 0 8px 32px rgba(239,68,68,0.25); }
+            h1 { color: #fca5a5; font-size: 1.5rem; margin-top: 0; }
+            p { color: #94a3b8; font-size: 0.9rem; line-height: 1.6; }
+            .badge { display: inline-block; background: rgba(239,68,68,0.2); color: #ef4444; font-weight: 700; padding: 6px 16px; border-radius: 20px; font-size: 0.8rem; margin-bottom: 1rem; border: 1px solid #ef4444; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="badge">SECURITY FREEZE CONFIRMED</div>
+            <h1>🛑 Account Frozen for 5 Hours</h1>
+            <p>Your BioVault-AI account <strong>${targetKey}</strong> has been immediately locked right away. All transfers and logins are halted.</p>
+            <p>To unblock, use <strong>Face Authentication only</strong> directly on the active platform.</p>
+          </div>
+        </body>
+        </html>
+      `);
     }
 
     return res.json({
       success: true,
+      isLocked: true,
       message: 'Account has been immediately frozen & locked for 5 hours.',
       lockRecord
     });
@@ -306,20 +348,62 @@ exports.getLockStatus = (req, res) => {
   }
 };
 
-// 2d. Unlock Account (User or Admin Emergency Override)
-exports.unlockAccount = (req, res) => {
+// 2d. Unlock Account via Face Authentication ONLY
+exports.unlockWithFace = async (req, res) => {
   try {
-    const { email } = req.body;
-    const userId = req.user?.sub || 'usr_biovault_01';
+    const { userId = 'usr_biovault_01', email, candidateDescriptor, threshold = 0.55 } = req.body;
     const targetKey = email || userId;
+
+    if (!candidateDescriptor || !Array.isArray(candidateDescriptor) || candidateDescriptor.length !== 128) {
+      return res.status(400).json({ error: 'Valid 128-D facial descriptor required to verify identity.' });
+    }
+
+    const enrolled = store.getBiometricDescriptor(targetKey);
+    if (!enrolled) {
+      return res.status(404).json({ error: 'No enrolled biometric descriptor template found for user.' });
+    }
+
+    // Exact Euclidean distance calculation
+    let sumSq = 0.0;
+    for (let i = 0; i < 128; i++) {
+      const diff = enrolled.descriptor[i] - candidateDescriptor[i];
+      sumSq += diff * diff;
+    }
+    const euclideanDistance = Math.sqrt(sumSq);
+    const verified = euclideanDistance < threshold;
+
+    if (!verified) {
+      return res.status(401).json({
+        success: false,
+        verified: false,
+        euclideanDistance: Number(euclideanDistance.toFixed(4)),
+        threshold,
+        error: `Biometric Mismatch (Distance D=${euclideanDistance.toFixed(4)} ≥ ${threshold}). Unauthorized face detected! Website remains strictly locked.`
+      });
+    }
+
+    // Genuine account holder verified! Unlock account and reset failed counters
     store.unlockAccount(targetKey);
+    store.resetFailedAttempts(targetKey);
+
     return res.json({
       success: true,
-      message: `Account (${targetKey}) has been successfully unlocked.`
+      verified: true,
+      euclideanDistance: Number(euclideanDistance.toFixed(4)),
+      threshold,
+      message: 'Identity verified successfully! Account unblocked and security lockdown lifted.'
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
+};
+
+// 2e. Unlock Account Legacy (Disabled for security: Face Authentication required)
+exports.unlockAccount = (req, res) => {
+  return res.status(403).json({
+    success: false,
+    error: 'Direct manual unlock is disabled for security. Live Face Authentication of the registered account holder is strictly required to unblock.'
+  });
 };
 
 // 3. WebAuthn Registration Challenge
