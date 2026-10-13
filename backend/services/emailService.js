@@ -172,16 +172,14 @@ async function sendUnauthorizedAccessAlert(toEmail, details = {}) {
     return {
       sent: true,
       simulated: false,
-      messageId: info.messageId,
-      confirmLockUrl
+      messageId: info.messageId
     };
   } catch (err) {
     console.error(`[BioVault Security Alert] ❌ Error sending alert email:`, err.message);
     return {
       sent: false,
       error: err.message,
-      simulated: true,
-      confirmLockUrl
+      simulated: true
     };
   }
 }
