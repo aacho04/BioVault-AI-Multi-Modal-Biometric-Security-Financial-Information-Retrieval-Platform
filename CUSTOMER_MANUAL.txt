@@ -32,7 +32,7 @@ TABLE OF CONTENTS
    5.1. Failed Authentication Thresholds (3 Attempts)
    5.2. Instant On-Screen Website Block
    5.3. Lockdown Duration & Strict Security Freeze (No Retry Allowed)
-   5.4. Email Security Alert & 5-Hour Freeze
+   5.4. Incident Forensics Email Security Alert
 6. Advanced Intelligence & Search Tools
    6.1. Financial IR Search (Language Models & Passage Retrieval)
    6.2. PageRank & Financial Web Crawler
@@ -185,12 +185,12 @@ recommended practices:
        * Hotline: +91 (022) 8000-VAULT
        * Email: security-alerts@biovault.ai
 
-5.4. Email Security Alert & 5-Hour Freeze:
-     - Upon unauthorized face detection, an incident forensics email is sent to 
-       your registered email address.
+5.4. Incident Forensics Email Security Alert:
+     - Upon unauthorized face detection, an incident forensics email is 
+       automatically dispatched to your registered email address.
      - It details the timestamp, transaction action, and biometric mismatch score.
-     - If you suspect an intruder, the email includes a 1-click 5-hour freeze 
-       protection link to lock the account.
+     - All threat protection is automated by BioVault-AI's Zero-Trust architecture; 
+       no manual email confirmation or unverified links are required.
 
 ================================================================================
 6. ADVANCED INTELLIGENCE & SEARCH TOOLS

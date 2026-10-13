@@ -236,8 +236,7 @@ exports.verifyFacecard = async (req, res) => {
         });
       }
       
-      // Dispatch immediate Unauthorized Access Security Alert Email with 5-Hour Lock confirmation link
-      const lockToken = store.createLockToken(targetKey);
+      // Dispatch immediate Unauthorized Access Security Alert Email
       const recipientEmail = email || (store.getUser(targetKey)?.email);
       let alertEmailResult = { sent: false };
 
@@ -247,7 +246,6 @@ exports.verifyFacecard = async (req, res) => {
             distance: euclideanDistance.toFixed(4),
             threshold: threshold.toFixed(2),
             action,
-            lockToken,
             time: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
           });
         } catch (e) {

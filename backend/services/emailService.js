@@ -87,11 +87,8 @@ async function sendUnauthorizedAccessAlert(toEmail, details = {}) {
     distance = '0.42',
     threshold = '0.30',
     action = 'High-Value Financial Transfer / Settings Modification',
-    lockToken = '',
     time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
   } = details;
-
-  const confirmLockUrl = `http://localhost:5000/api/auth/confirm-unauthorized?email=${encodeURIComponent(toEmail)}&token=${lockToken}`;
 
   const htmlContent = `
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 620px; margin: 0 auto; background: #080d1a; border: 2px solid #ef4444; border-radius: 14px; padding: 32px; color: #f8fafc;">
@@ -135,35 +132,30 @@ async function sendUnauthorizedAccessAlert(toEmail, details = {}) {
         </table>
       </div>
 
-      <!-- Action Confirmation Box -->
-      <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid #ef4444; border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px;">
-        <p style="color: #ffffff; font-size: 15px; font-weight: 700; margin-top: 0; margin-bottom: 10px;">
-          Was this unauthorized attempt made by someone else?
+      <!-- Security Notice -->
+      <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 10px; padding: 18px; margin-bottom: 20px; font-size: 13px; color: #cbd5e1; line-height: 1.6;">
+        <p style="margin: 0 0 8px 0; color: #fca5a5; font-weight: 700;">
+          🔒 Automated Threat Protection
         </p>
-        <p style="color: #cbd5e1; font-size: 13px; line-height: 1.5; margin-bottom: 20px;">
-          If you or someone unauthorized attempted this transaction, click below immediately to <strong>BLOCK your account for 5 hours</strong>. All fund transfers, logins, and settings changes will be frozen.
+        <p style="margin: 0;">
+          All financial transfers and settings changes remain protected under BioVault-AI's Zero-Trust biometric architecture. If 3 consecutive failed attempts occur, the system automatically engages an immediate 5-hour lockdown on-screen. No manual intervention is needed.
         </p>
-
-        <a href="${confirmLockUrl}" target="_blank" style="display: inline-block; background: #dc2626; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 800; font-size: 14px; letter-spacing: 0.5px; box-shadow: 0 4px 15px rgba(220, 38, 38, 0.45); border: 1px solid #f87171;">
-          🛑 YES, THIS WAS NOT ME — BLOCK ACCOUNT FOR 5 HOURS
-        </a>
       </div>
 
-      <!-- Footer Policy -->
+      <!-- Footer Policy & Contacts -->
       <div style="border-top: 1px solid #1e293b; padding-top: 16px; font-size: 12px; color: #64748b; line-height: 1.6;">
-        <p style="margin: 0 0 6px 0;">🔒 <strong>Automatic Unlock:</strong> Once blocked, your account will automatically unblock after 5 hours.</p>
-        <p style="margin: 0;">ℹ️ <em>If this attempt was made by you (e.g. poor lighting or test), you can safely disregard this warning.</em></p>
+        <p style="margin: 0 0 6px 0;">For emergency assistance or manual verification, contact our 24/7 Security Operations Center at <strong>+91 (022) 8000-VAULT</strong> or email <strong>security-alerts@biovault.ai</strong>.</p>
+        <p style="margin: 0;"><em>BioVault-AI Multi-Modal Biometric Security &bull; High-Assurance Financial Retrieval Platform</em></p>
       </div>
 
     </div>
   `;
 
   if (!transporter) {
-    console.warn(`[BioVault Security Alert] ⚠️ SMTP missing. Simulated Unauthorized Access Alert to ${toEmail}: Confirm Lock Link -> ${confirmLockUrl}`);
+    console.warn(`[BioVault Security Alert] ⚠️ SMTP missing. Simulated Unauthorized Access Alert to ${toEmail}`);
     return {
       sent: false,
       simulated: true,
-      confirmLockUrl,
       message: 'GMAIL_APP_PASSWORD not configured. Simulated security alert logged.'
     };
   }
