@@ -34,6 +34,7 @@ from ranking_eval import RankingEvaluator
 from recommender import HybridFinancialRecommender
 from information_extraction import FinancialInformationExtractor
 from semantic_web import SemanticKnowledgeGraph
+from rag_chatbot import BankingAIChatbot
 
 app = FastAPI(
     title="BioVault-AI Intelligence Engine",
@@ -71,6 +72,7 @@ evaluator = RankingEvaluator()
 recommender = HybridFinancialRecommender()
 ner_extractor = FinancialInformationExtractor()
 semantic_kg = SemanticKnowledgeGraph()
+banking_chatbot = BankingAIChatbot()
 
 # Preload sample crawled documents into Language Model index
 initial_crawl = crawler.simulate_crawl()
@@ -267,6 +269,32 @@ def get_semantic_graph(subject: Optional[str] = None):
     if subject:
         return {"matched_triples": semantic_kg.query_graph(subject_filter=subject)}
     return semantic_kg.get_full_graph()
+
+
+@app.post("/api/ir/chatbot/query")
+def chatbot_query(payload: Dict[str, Any] = Body(...)):
+    """
+    RAG & IR Chatbot answering queries based on CUSTOMER_MANUAL.txt.
+    Supports Okapi BM25, TF-IDF dense semantic, and hybrid retrieval.
+    """
+    query_text = payload.get("query", "").strip()
+    mode = payload.get("retrieval_mode", payload.get("mode", "hybrid"))
+    top_k = int(payload.get("top_k", 4))
+    history = payload.get("history", [])
+    return banking_chatbot.query(user_query=query_text, retrieval_mode=mode, top_k=top_k, history=history)
+
+
+@app.get("/api/ir/chatbot/status")
+def chatbot_status():
+    """Returns knowledge base indexing status and passage statistics."""
+    return banking_chatbot.get_status()
+
+
+@app.post("/api/ir/chatbot/reload")
+def chatbot_reload():
+    """Reloads the customer manual and updates the index."""
+    stats = banking_chatbot.load_knowledge_base()
+    return {"message": "Knowledge base reloaded successfully", "stats": stats}
 
 
 @app.get("/")

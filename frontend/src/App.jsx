@@ -4,6 +4,8 @@ import AuthModal from './components/AuthModal';
 import Dashboard from './pages/Dashboard';
 import DeepLearningLab from './pages/DeepLearningLab';
 import IRSearch from './pages/IRSearch';
+import AIChatbot from './pages/AIChatbot';
+import FloatingChatbot from './components/FloatingChatbot';
 import { ShieldCheck, Eye, Lock, Key, Mail, Sparkles, CheckCircle2, ArrowRight, RefreshCw, Smartphone, KeyRound, Cpu, ShieldAlert, Check, Trash2, RotateCcw, AlertOctagon, Clock, Camera } from 'lucide-react';
 import { startRegistration } from '@simplewebauthn/browser';
 
@@ -349,6 +351,7 @@ export default function App() {
             )}
             {activeTab === 'dl-lab' && <DeepLearningLab />}
             {activeTab === 'ir-search' && <IRSearch />}
+            {activeTab === 'chatbot' && <AIChatbot />}
           </>
         ) : (
           /* Clean 2-Option Security Gate (Login vs Register) */
@@ -867,6 +870,9 @@ export default function App() {
           if (userData) setUser(prev => ({ ...prev, ...userData }));
         }}
       />
+
+      {/* Grounded Enterprise Banking AI Chatbot Assistant Widget */}
+      <FloatingChatbot />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Cpu, Search, LayoutDashboard, KeyRound, LogOut, Lock } from 'lucide-react';
+import { ShieldCheck, Cpu, Search, LayoutDashboard, KeyRound, LogOut, Lock, Bot } from 'lucide-react';
 
 export default function Navbar({ activeTab, setActiveTab, onOpenAuth, isAuthenticated, user, onLogout }) {
   return (
@@ -72,6 +72,19 @@ export default function Navbar({ activeTab, setActiveTab, onOpenAuth, isAuthenti
               }}
             >
               <Search size={15} /> IR Search & Graph
+            </button>
+
+            <button
+              onClick={() => setActiveTab('chatbot')}
+              className={`btn-secondary ${activeTab === 'chatbot' ? 'glass-panel-active' : ''}`}
+              style={{
+                padding: '0.5rem 0.9rem',
+                fontSize: '0.85rem',
+                borderColor: activeTab === 'chatbot' ? '#06b6d4' : undefined,
+                color: activeTab === 'chatbot' ? '#38bdf8' : undefined
+              }}
+            >
+              <Bot size={15} /> AI Chatbot
             </button>
           </nav>
         )}

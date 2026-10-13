@@ -37,6 +37,7 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
   const [isVerifyingTransferFace, setIsVerifyingTransferFace] = useState(false);
   const transferVideoRef = useRef(null);
   const transferStreamRef = useRef(null);
+  const isTransferCameraRequested = useRef(false);
 
   // Modal 2: Multi-Factor PIN Update Modal (Email OTP -> Face Scan -> Set New PIN)
   const [isChangePinModalOpen, setIsChangePinModalOpen] = useState(false);
@@ -48,6 +49,7 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
   const [isVerifyingFace, setIsVerifyingFace] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const isFaceCameraRequested = useRef(false);
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [changePinStatus, setChangePinStatus] = useState(null);
@@ -61,10 +63,20 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
   const [thresholdModalStatus, setThresholdModalStatus] = useState(null);
   const thresholdVideoRef = useRef(null);
   const thresholdStreamRef = useRef(null);
+  const isThresholdCameraRequested = useRef(false);
 
   // 5-Hour Security Lockdown State - Website Blocked right away
   const [isWebsiteLocked, setIsWebsiteLocked] = useState(false);
   const [lockoutData, setLockoutData] = useState(null);
+
+  // Real Browser & IP Geolocation State (Synchronized with MongoDB)
+  const [currentLocation, setCurrentLocation] = useState({
+    latitude: 18.5196,
+    longitude: 73.8545,
+    city: 'Pune, Maharashtra, India',
+    geoDistanceKm: 0.0,
+    source: 'Real IP Geolocation'
+  });
 
   const checkWebsiteLockStatus = async () => {
     try {
@@ -81,6 +93,44 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
       }
     } catch (e) {}
   };
+
+  // Detect real device location on mount via IP & GPS
+  useEffect(() => {
+    // 1. Fetch real network location from server
+    fetch('/api/transactions/current-location')
+      .then(res => res.json())
+      .then(loc => {
+        if (loc && loc.city) {
+          setCurrentLocation(prev => ({
+            ...prev,
+            city: loc.city,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+            geoDistanceKm: loc.geoDistanceKm || 0.0,
+            source: loc.source || 'Network Geolocation'
+          }));
+        }
+      })
+      .catch(err => console.log('Location detection fallback:', err));
+
+    // 2. Also query browser GPS if permitted
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          setCurrentLocation(prev => ({
+            ...prev,
+            latitude: lat,
+            longitude: lon,
+            source: 'Live Device GPS'
+          }));
+        },
+        (err) => {},
+        { timeout: 5000 }
+      );
+    }
+  }, []);
 
   // Load transactions, recommendations, stored threshold, and check lock status on mount
   useEffect(() => {
@@ -147,24 +197,36 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
 
   const evaluateAnomaly = async (numAmount, numVelocity = 1) => {
     try {
-      const res = await fetch('/api/ml/anomaly-detect', {
+      const dist = typeof currentLocation?.geoDistanceKm === 'number' ? currentLocation.geoDistanceKm : 0.0;
+      const res = await fetch('/api/transactions/evaluate-risk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           amount: Number(numAmount),
-          hour: new Date().getHours(),
           velocity: Number(numVelocity),
-          geo_distance: 10.0,
-          failed_attempts: 0
+          geo_distance: Number(dist),
+          location: currentLocation,
+          email: userEmail || 'alex.vance@biovault.ai',
+          customBigAmountThreshold: Number(customBigAmountThreshold)
         })
       });
       if (res.ok) {
         const data = await res.json();
-        setAnomalyResult(data);
-        return data;
+        const evaluation = data.anomalyEvaluation || data;
+        const merged = {
+          ...evaluation,
+          risk_score: data.riskScore ?? evaluation.risk_score ?? 10,
+          risk_level: data.riskLevel ?? evaluation.risk_level ?? 'LOW',
+          requires_face_auth: Boolean(data.requiresFaceAuth ?? evaluation.requires_face_auth ?? false),
+          recent_interval_tx_count: data.recentWindowCount ?? evaluation.recent_interval_tx_count ?? 0,
+          customer_history: data.customerHistory,
+          signals: data.signals || evaluation.signals || {}
+        };
+        setAnomalyResult(merged);
+        return merged;
       }
     } catch (e) {
-      console.warn('Autoencoder screening notice:', e);
+      console.warn('Risk intelligence screening notice:', e);
     }
     return null;
   };
@@ -179,7 +241,7 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
   };
 
   // -------------------------------------------------------------
-  // 1. MONEY TRANSFER FLOW (ANOMALY SCREENED FIRST, THEN AUTH)
+  // 1. MONEY TRANSFER FLOW (MULTI-SIGNAL RISK INTELLIGENCE SCREENING)
   // -------------------------------------------------------------
   const handleTransfer = async (e) => {
     if (e) e.preventDefault();
@@ -194,23 +256,28 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
       velocity: numVelocity,
       hour: new Date().getHours(),
       email: userEmail,
+      location: currentLocation,
+      geo_distance: typeof currentLocation?.geoDistanceKm === 'number' ? currentLocation.geoDistanceKm : 0.0,
       customBigAmountThreshold: Number(customBigAmountThreshold)
     };
     setPendingTransferData(payload);
 
-    // STEP 1: DETECT ANOMALY FIRST via Deep Autoencoder
+    // STEP 1: EVALUATE COMPOSITE RISK SCORE (Autoencoder + Multi-Signal Rules Engine)
     let anomalyData = await evaluateAnomaly(numAmount, numVelocity);
 
     if (!anomalyData) {
       const isHigh = numAmount >= Number(customBigAmountThreshold) || numVelocity > 5;
       anomalyData = {
+        risk_score: isHigh ? 65 : 8,
+        risk_level: isHigh ? 'MEDIUM' : 'LOW',
+        requires_face_auth: isHigh,
         is_anomalous: isHigh,
-        reconstruction_error: isHigh ? 16.43 : 0.08,
-        anomaly_score: isHigh ? 0.85 : 0.12,
-        threshold_tau: 0.45,
-        recommended_action: isHigh ? 'Step-Up Biometric Authentication (PIN + Live Face Scan) Required' : 'Allow Transaction Automatically',
+        reconstruction_error: isHigh ? 1.42 : 0.08,
+        anomaly_score: isHigh ? 0.65 : 0.08,
+        threshold_tau: 0.65,
+        recommended_action: isHigh ? 'Step-Up Biometric Authentication (PIN + Live Face Scan) Required' : 'Allow via Security PIN Verification',
         contributing_risk_factors: isHigh
-          ? [`Unusual High-Value Surge: ₹${numAmount.toLocaleString('en-IN')} exceeds standard baseline (₹500)`]
+          ? [`Unusual High-Value Surge: ₹${numAmount.toLocaleString('en-IN')} exceeds limit`]
           : ['Nominal Low-Risk Routine Transfer Profile']
       };
       setAnomalyResult(anomalyData);
@@ -219,10 +286,17 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
     setIsSubmitting(false);
 
     // STEP 2: DECIDE AUTHENTICATION CHALLENGE
-    const isAnomalous = anomalyData.is_anomalous || numAmount >= Number(customBigAmountThreshold);
+    // Practical Outcome: Routine single ₹300 payment -> PIN only.
+    // Suspicious sequence of smaller payments (3+ transfers in 5 min) or high risk -> Face Scan!
+    const requiresFace = Boolean(
+      anomalyData.requires_face_auth ||
+      anomalyData.is_anomalous ||
+      numAmount >= Number(customBigAmountThreshold) ||
+      (Number(anomalyData.recent_interval_tx_count) >= 3)
+    );
 
-    if (isAnomalous) {
-      // Anomaly Detected ➔ Trigger Step-Up Face Authentication
+    if (requiresFace) {
+      // Step-Up Face Authentication Triggered
       setTransferStage('face');
       setPinInput('1234');
       setPinError(null);
@@ -232,7 +306,7 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
         startTransferCamera();
       }, 150);
     } else {
-      // Benign ➔ Standard PIN-only clearance
+      // Benign Routine Transfer (e.g. ₹300 routine spend) ➔ Standard PIN-only clearance
       setTransferStage('pin');
       setPinInput('');
       setPinError(null);
@@ -242,9 +316,18 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
   };
 
   const startTransferCamera = async () => {
+    isTransferCameraRequested.current = true;
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+        if (!isTransferCameraRequested.current) {
+          // Modal was dismissed while camera was starting
+          stream.getTracks().forEach(t => {
+            t.stop();
+            t.enabled = false;
+          });
+          return;
+        }
         transferStreamRef.current = stream;
         if (transferVideoRef.current) {
           transferVideoRef.current.srcObject = stream;
@@ -254,14 +337,33 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
       setTransferCameraActive(true);
     } catch (e) {
       console.warn('Transfer Camera notice:', e);
-      setTransferCameraActive(true);
+      setTransferCameraActive(false);
     }
   };
 
   const stopTransferCamera = () => {
+    isTransferCameraRequested.current = false;
     if (transferStreamRef.current) {
-      transferStreamRef.current.getTracks().forEach(t => t.stop());
+      try {
+        transferStreamRef.current.getTracks().forEach(t => {
+          t.stop();
+          t.enabled = false;
+        });
+      } catch (err) {
+        console.warn('Error stopping transfer tracks:', err);
+      }
       transferStreamRef.current = null;
+    }
+    if (transferVideoRef.current) {
+      if (transferVideoRef.current.srcObject) {
+        try {
+          transferVideoRef.current.srcObject.getTracks().forEach(t => {
+            t.stop();
+            t.enabled = false;
+          });
+        } catch (e) {}
+      }
+      transferVideoRef.current.srcObject = null;
     }
     setTransferCameraActive(false);
   };
@@ -441,9 +543,17 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
   };
 
   const startThresholdCamera = async () => {
+    isThresholdCameraRequested.current = true;
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+        if (!isThresholdCameraRequested.current) {
+          stream.getTracks().forEach(t => {
+            t.stop();
+            t.enabled = false;
+          });
+          return;
+        }
         thresholdStreamRef.current = stream;
         if (thresholdVideoRef.current) {
           thresholdVideoRef.current.srcObject = stream;
@@ -453,14 +563,33 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
       setThresholdCameraActive(true);
     } catch (e) {
       console.warn('Threshold Camera notice:', e);
-      setThresholdCameraActive(true);
+      setThresholdCameraActive(false);
     }
   };
 
   const stopThresholdCamera = () => {
+    isThresholdCameraRequested.current = false;
     if (thresholdStreamRef.current) {
-      thresholdStreamRef.current.getTracks().forEach(t => t.stop());
+      try {
+        thresholdStreamRef.current.getTracks().forEach(t => {
+          t.stop();
+          t.enabled = false;
+        });
+      } catch (err) {
+        console.warn('Error stopping threshold tracks:', err);
+      }
       thresholdStreamRef.current = null;
+    }
+    if (thresholdVideoRef.current) {
+      if (thresholdVideoRef.current.srcObject) {
+        try {
+          thresholdVideoRef.current.srcObject.getTracks().forEach(t => {
+            t.stop();
+            t.enabled = false;
+          });
+        } catch (e) {}
+      }
+      thresholdVideoRef.current.srcObject = null;
     }
     setThresholdCameraActive(false);
   };
@@ -617,9 +746,17 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
   };
 
   const startFaceCamera = async () => {
+    isFaceCameraRequested.current = true;
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+        if (!isFaceCameraRequested.current) {
+          stream.getTracks().forEach(t => {
+            t.stop();
+            t.enabled = false;
+          });
+          return;
+        }
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -629,17 +766,63 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
       setFaceCameraActive(true);
     } catch (e) {
       console.warn('Camera notice:', e);
-      setFaceCameraActive(true);
+      setFaceCameraActive(false);
     }
   };
 
   const stopFaceCamera = () => {
+    isFaceCameraRequested.current = false;
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      try {
+        streamRef.current.getTracks().forEach(t => {
+          t.stop();
+          t.enabled = false;
+        });
+      } catch (err) {
+        console.warn('Error stopping face camera tracks:', err);
+      }
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      if (videoRef.current.srcObject) {
+        try {
+          videoRef.current.srcObject.getTracks().forEach(t => {
+            t.stop();
+            t.enabled = false;
+          });
+        } catch (e) {}
+      }
+      videoRef.current.srcObject = null;
     }
     setFaceCameraActive(false);
   };
+
+  // Dedicated reactive camera shutdown watchers: turn off webcam hardware stream when modal is closed or step changes
+  useEffect(() => {
+    if (!isPinModalOpen || transferStage !== 'face') {
+      stopTransferCamera();
+    }
+  }, [isPinModalOpen, transferStage]);
+
+  useEffect(() => {
+    if (!isSetThresholdModalOpen || thresholdModalStep !== 'face') {
+      stopThresholdCamera();
+    }
+  }, [isSetThresholdModalOpen, thresholdModalStep]);
+
+  useEffect(() => {
+    if (!isChangePinModalOpen || pinUpdateStep !== 2) {
+      stopFaceCamera();
+    }
+  }, [isChangePinModalOpen, pinUpdateStep]);
+
+  useEffect(() => {
+    return () => {
+      stopTransferCamera();
+      stopThresholdCamera();
+      stopFaceCamera();
+    };
+  }, []);
 
   const handleVerifyFaceForPinUpdate = async () => {
     setIsVerifyingFace(true);
@@ -892,16 +1075,15 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
         <div className="glass-panel" style={{ padding: '1.5rem', position: 'relative', overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Vault Available Liquidity (₹ INR)
+              Vault Available Liquidity
             </span>
             <div style={{ color: '#06b6d4', fontWeight: 800, fontSize: '1.2rem' }}>₹</div>
           </div>
           <div className="font-heading" style={{ fontSize: '2.1rem', fontWeight: 800, color: '#fff' }}>
             ₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <span className="badge badge-emerald">● Biometrically Secured</span>
-            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>FIDO2 Hardware Bound</span>
+          <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span>● Protected by Biometric Security</span>
           </div>
         </div>
 
@@ -909,15 +1091,17 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
         <div className="glass-panel" style={{ padding: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              AI Fraud Protection (Autoencoder)
+              AI Fraud Protection
             </span>
-            <ShieldAlert size={20} color="#10b981" />
+            <ShieldAlert size={20} color={anomalyResult?.is_anomalous ? "#ef4444" : "#10b981"} />
           </div>
-          <div className="font-heading" style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10b981' }}>
-            L_rec &lt; 0.45 (Normal)
+          <div className="font-heading" style={{ fontSize: '1.5rem', fontWeight: 800, color: anomalyResult?.is_anomalous ? '#f87171' : '#10b981' }}>
+            {anomalyResult?.is_anomalous ? 'Anomaly Detected' : 'Protected (Normal)'}
           </div>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.5rem' }}>
-            Deep Autoencoder continuously screens transactions: Score(x) = ||x - x̂||²
+          <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.5rem' }}>
+            {anomalyResult?.is_anomalous 
+              ? 'Unusual activity: Step-up Face ID challenge required' 
+              : 'Neural autoencoder continuously screens transactions'}
           </p>
         </div>
 
@@ -925,15 +1109,17 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
         <div className="glass-panel" style={{ padding: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
             <span style={{ fontSize: '0.78rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Spending Pattern Category (GMM)
+              Spending Category
             </span>
             <Layers size={20} color="#8b5cf6" />
           </div>
-          <div className="font-heading" style={{ fontSize: '1.15rem', fontWeight: 700, color: '#c084fc' }}>
-            {gmmCluster?.cluster_label || 'Utilities & Recurring Bills'}
+          <div className="font-heading" style={{ fontSize: '1.25rem', fontWeight: 700, color: '#c084fc' }}>
+            {gmmCluster?.cluster_label || 'Routine Utilities & Everyday'}
           </div>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '0.5rem' }}>
-            Gaussian Mixture Model affinity: {gmmCluster ? `${(gmmCluster.cluster_affinity_probability * 100).toFixed(1)}% confidence` : '98.8% confidence'}
+          <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '0.5rem' }}>
+            {gmmCluster 
+              ? `Behavioral AI affinity: ${(gmmCluster.cluster_affinity_probability * 100).toFixed(0)}% confidence`
+              : 'Categorized by Gaussian behavioral model'}
           </p>
         </div>
 
@@ -986,6 +1172,24 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
             >
               🚨 Preset: ₹25,000 (Triggers Face Scan)
             </button>
+          </div>
+
+          {/* Detected Real Location Badge */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'rgba(6, 182, 212, 0.08)',
+            border: '1px solid rgba(6, 182, 212, 0.25)',
+            padding: '0.5rem 0.85rem',
+            borderRadius: '8px',
+            marginBottom: '1rem',
+            fontSize: '0.8rem'
+          }}>
+            <span style={{ color: '#94a3b8' }}>📍 Device Location (MongoDB):</span>
+            <span style={{ color: '#38bdf8', fontWeight: 600 }}>
+              {currentLocation.city} ({currentLocation.geoDistanceKm} km)
+            </span>
           </div>
 
           <form onSubmit={handleTransfer} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
@@ -1112,39 +1316,156 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
           {anomalyResult && (
             <div style={{
               marginTop: '1.25rem',
-              padding: '1rem',
-              borderRadius: '10px',
-              background: anomalyResult.is_anomalous ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-              border: `1px solid ${anomalyResult.is_anomalous ? '#ef4444' : '#10b981'}`
+              padding: '1.25rem',
+              borderRadius: '12px',
+              background: (anomalyResult.risk_score || 0) >= 36 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(16, 185, 129, 0.08)',
+              border: (anomalyResult.risk_score || 0) >= 36 ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid rgba(16, 185, 129, 0.35)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.85rem'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, color: anomalyResult.is_anomalous ? '#ef4444' : '#34d399' }}>
-                {anomalyResult.is_anomalous ? <AlertOctagon size={18} /> : <CheckCircle2 size={18} />}
-                {anomalyResult.is_anomalous ? 'ANOMALY DETECTED (High Risk Deviation)' : 'BENIGN TRANSACTION VERIFIED'}
-              </div>
-              <p style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '0.35rem', marginBottom: '0.5rem' }}>
-                Reconstruction Loss: <strong>{anomalyResult.reconstruction_error}</strong> (Threshold τ = 0.45). Action: {anomalyResult.recommended_action}.
-              </p>
-
-              {anomalyResult.contributing_risk_factors && anomalyResult.contributing_risk_factors.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.5rem' }}>
-                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600 }}>Identified Risk Factors:</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
-                    {anomalyResult.contributing_risk_factors.map((factor, idx) => (
-                      <span
-                        key={idx}
-                        style={{
-                          fontSize: '0.72rem',
-                          padding: '0.2rem 0.5rem',
-                          borderRadius: '4px',
-                          background: anomalyResult.is_anomalous ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
-                          color: anomalyResult.is_anomalous ? '#fca5a5' : '#86efac',
-                          border: `1px solid ${anomalyResult.is_anomalous ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'}`
-                        }}
-                      >
-                        ● {factor}
-                      </span>
-                    ))}
+              {/* Header & Composite Risk Score Gauge */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', fontWeight: 600 }}>
+                    Transaction Risk Intelligence Engine
                   </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.2rem' }}>
+                    {(anomalyResult.risk_score || 0) >= 36 ? (
+                      <AlertOctagon size={18} color="#ef4444" />
+                    ) : (
+                      <CheckCircle2 size={18} color="#10b981" />
+                    )}
+                    <span style={{
+                      fontWeight: 700,
+                      fontSize: '0.95rem',
+                      color: (anomalyResult.risk_score || 0) >= 66 ? '#ef4444' : ((anomalyResult.risk_score || 0) >= 36 ? '#f59e0b' : '#34d399')
+                    }}>
+                      {(anomalyResult.risk_score || 0) >= 66 ? 'CRITICAL RISK ALERT' : ((anomalyResult.risk_score || 0) >= 36 ? 'ELEVATED SEQUENCE RISK' : 'ROUTINE LOW-RISK PAYMENT')}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Composite Risk Score</div>
+                  <div style={{
+                    fontSize: '1.25rem',
+                    fontWeight: 800,
+                    fontFamily: 'monospace',
+                    color: (anomalyResult.risk_score || 0) >= 66 ? '#ef4444' : ((anomalyResult.risk_score || 0) >= 36 ? '#f59e0b' : '#34d399')
+                  }}>
+                    {anomalyResult.risk_score ?? 8}<span style={{ fontSize: '0.8rem', color: '#94a3b8' }}> / 100</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic Score Progress Bar */}
+              <div style={{ width: '100%', height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{
+                  width: `${Math.min(100, Math.max(5, anomalyResult.risk_score || 8))}%`,
+                  height: '100%',
+                  background: (anomalyResult.risk_score || 0) >= 66
+                    ? 'linear-gradient(90deg, #f59e0b, #ef4444)'
+                    : ((anomalyResult.risk_score || 0) >= 36
+                      ? 'linear-gradient(90deg, #10b981, #f59e0b)'
+                      : '#10b981'),
+                  borderRadius: 3,
+                  transition: 'width 0.3s ease'
+                }} />
+              </div>
+
+              {/* Multi-Signal Breakdown Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.2rem' }}>
+                {/* Signal 1: Amount vs History */}
+                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.55rem', borderRadius: '6px', fontSize: '0.74rem' }}>
+                  <div style={{ color: '#94a3b8', fontWeight: 600 }}>📊 Amount vs History</div>
+                  <div style={{ color: '#e2e8f0', marginTop: '0.15rem' }}>
+                    {anomalyResult.signals?.amount_vs_history?.label || 'Routine Spend'}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.1rem' }}>
+                    {anomalyResult.signals?.amount_vs_history?.detail || `₹${Number(amount || 300).toFixed(2)} vs Avg`}
+                  </div>
+                </div>
+
+                {/* Signal 2: Short-Interval Burst Sequence */}
+                <div style={{
+                  background: (anomalyResult.recent_interval_tx_count || 0) >= 3 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(0,0,0,0.25)',
+                  border: (anomalyResult.recent_interval_tx_count || 0) >= 3 ? '1px solid rgba(239, 68, 68, 0.3)' : 'none',
+                  padding: '0.55rem',
+                  borderRadius: '6px',
+                  fontSize: '0.74rem'
+                }}>
+                  <div style={{ color: (anomalyResult.recent_interval_tx_count || 0) >= 3 ? '#fca5a5' : '#94a3b8', fontWeight: 600 }}>
+                    ⚡ 5-Min Burst Sequence
+                  </div>
+                  <div style={{ color: (anomalyResult.recent_interval_tx_count || 0) >= 3 ? '#ef4444' : '#e2e8f0', marginTop: '0.15rem', fontWeight: (anomalyResult.recent_interval_tx_count || 0) >= 3 ? 700 : 400 }}>
+                    {anomalyResult.recent_interval_tx_count ?? 0} tx(s) in last 5 mins
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.1rem' }}>
+                    {(anomalyResult.recent_interval_tx_count || 0) >= 3 ? '⚠️ Micro-draining sequence' : 'Normal transfer cadence'}
+                  </div>
+                </div>
+
+                {/* Signal 3: Transaction Time */}
+                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.55rem', borderRadius: '6px', fontSize: '0.74rem' }}>
+                  <div style={{ color: '#94a3b8', fontWeight: 600 }}>🕒 Time Profile</div>
+                  <div style={{ color: '#e2e8f0', marginTop: '0.15rem' }}>
+                    {anomalyResult.signals?.transaction_time?.label || `${new Date().getHours()}:00 Window`}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.1rem' }}>
+                    {anomalyResult.signals?.transaction_time?.detail || '24/7 Digital Banking'}
+                  </div>
+                </div>
+
+                {/* Signal 4: Autoencoder Latent Loss */}
+                <div style={{ background: 'rgba(0,0,0,0.25)', padding: '0.55rem', borderRadius: '6px', fontSize: '0.74rem' }}>
+                  <div style={{ color: '#94a3b8', fontWeight: 600 }}>🧠 Deep Autoencoder</div>
+                  <div style={{ color: '#e2e8f0', marginTop: '0.15rem', fontFamily: 'monospace' }}>
+                    L_rec = {anomalyResult.reconstruction_error ?? 0.08}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '0.1rem' }}>
+                    Bottleneck threshold τ = 0.65
+                  </div>
+                </div>
+              </div>
+
+              {/* Protocol Action / Outcome Summary */}
+              <div style={{
+                padding: '0.55rem 0.75rem',
+                borderRadius: '6px',
+                background: (anomalyResult.risk_score || 0) >= 36 ? 'rgba(239, 68, 68, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                fontSize: '0.76rem',
+                color: (anomalyResult.risk_score || 0) >= 36 ? '#fca5a5' : '#86efac',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+              }}>
+                {(anomalyResult.risk_score || 0) >= 36 ? (
+                  <>⚠️ Step-Up Protocol: Live Biometric Face Scan required ({anomalyResult.recent_interval_tx_count >= 3 ? 'Suspicious sequence of smaller payments detected' : (Number(amount) >= customBigAmountThreshold ? 'High-value transfer' : 'Elevated risk score')}).</>
+                ) : (
+                  <>✓ Routine Payment: A ₹{Number(amount || 300).toFixed(2)} routine payment is cleared directly via Security PIN verification (Camera stays off).</>
+                )}
+              </div>
+
+              {/* Contributing Risk Factors Pills */}
+              {anomalyResult.contributing_risk_factors && anomalyResult.contributing_risk_factors.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.15rem' }}>
+                  {anomalyResult.contributing_risk_factors.map((factor, idx) => (
+                    <span
+                      key={idx}
+                      style={{
+                        fontSize: '0.7rem',
+                        padding: '0.15rem 0.45rem',
+                        borderRadius: '4px',
+                        background: (anomalyResult.risk_score || 0) >= 36 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                        color: (anomalyResult.risk_score || 0) >= 36 ? '#fca5a5' : '#86efac',
+                        border: (anomalyResult.risk_score || 0) >= 36 ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)'
+                      }}
+                    >
+                      ● {factor}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
@@ -1217,6 +1538,7 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
                 <th style={{ padding: '0.75rem' }}>Transaction ID</th>
                 <th style={{ padding: '0.75rem' }}>Timestamp</th>
                 <th style={{ padding: '0.75rem' }}>Merchant / Category</th>
+                <th style={{ padding: '0.75rem' }}>Location (MongoDB)</th>
                 <th style={{ padding: '0.75rem' }}>Amount (₹)</th>
                 <th style={{ padding: '0.75rem' }}>Autoencoder L_rec</th>
                 <th style={{ padding: '0.75rem' }}>Status</th>
@@ -1228,6 +1550,9 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
                   <td className="font-mono" style={{ padding: '0.75rem', color: '#38bdf8' }}>{tx.id}</td>
                   <td style={{ padding: '0.75rem', color: '#94a3b8' }}>{new Date(tx.timestamp).toLocaleTimeString()}</td>
                   <td style={{ padding: '0.75rem', color: '#f8fafc' }}>{tx.merchant}</td>
+                  <td style={{ padding: '0.75rem', color: '#cbd5e1', fontSize: '0.8rem' }}>
+                    {tx.location?.city ? `${tx.location.city} (${tx.location.geoDistanceKm || 0} km)` : 'Pune, Maharashtra (Local)'}
+                  </td>
                   <td style={{ padding: '0.75rem', fontWeight: 600 }}>₹{Number(tx.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                   <td className="font-mono" style={{ padding: '0.75rem', color: tx.reconstructionError > 0.45 ? '#ef4444' : '#10b981' }}>
                     {tx.reconstructionError}
@@ -1248,18 +1573,29 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
       {/* 1. TRANSACTION SECURITY PIN AUTHORIZATION MODAL */}
       {/* ------------------------------------------------------------- */}
       {isPinModalOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9999,
-          background: 'rgba(2, 6, 23, 0.85)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem',
-          overflowY: 'auto'
-        }}>
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              stopTransferCamera();
+              setIsPinModalOpen(false);
+              setPinError(null);
+              setPinSuccess(null);
+              setPinInput('');
+              setTransferStage('pin');
+            }
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(2, 6, 23, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+            overflowY: 'auto'
+          }}>
           <div className="glass-panel" style={{
             maxWidth: transferStage === 'face' ? 520 : 440,
             width: '100%',
@@ -1602,18 +1938,24 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
       {/* 2. SET / UPDATE HIGH-VALUE LIMIT MODAL (REQUIRES FACE SCAN)   */}
       {/* ------------------------------------------------------------- */}
       {isSetThresholdModalOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9999,
-          background: 'rgba(2, 6, 23, 0.85)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem',
-          overflowY: 'auto'
-        }}>
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeSetThresholdModal();
+            }
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(2, 6, 23, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+            overflowY: 'auto'
+          }}>
           <div className="glass-panel" style={{
             maxWidth: 480,
             width: '100%',
@@ -1837,18 +2179,24 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
       {/* 3. MULTI-FACTOR (EMAIL OTP + FACE SCAN) SECURITY PIN UPDATE MODAL */}
       {/* ------------------------------------------------------------- */}
       {isChangePinModalOpen && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9999,
-          background: 'rgba(2, 6, 23, 0.85)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem',
-          overflowY: 'auto'
-        }}>
+        <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closePinUpdateModal();
+            }
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(2, 6, 23, 0.85)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+            overflowY: 'auto'
+          }}>
           <div className="glass-panel" style={{
             maxWidth: 480,
             width: '100%',

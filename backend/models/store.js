@@ -397,6 +397,53 @@ class BioVaultStore {
   getTransactions(userId) {
     return this.transactions.filter(t => !userId || t.userId === userId);
   }
+
+  getRecentTransactionsCount(userIdOrEmail, windowMinutes = 5) {
+    const cutoff = Date.now() - windowMinutes * 60 * 1000;
+    const cleanId = String(userIdOrEmail || '').toLowerCase();
+    const user = this.getUser(userIdOrEmail);
+    const validIds = new Set([cleanId]);
+    if (user) {
+      if (user.id) validIds.add(user.id.toLowerCase());
+      if (user.email) validIds.add(user.email.toLowerCase());
+    }
+
+    const count = this.transactions.filter(t => {
+      const uId = String(t.userId || '').toLowerCase();
+      const sEmail = String(t.senderEmail || '').toLowerCase();
+      const match = validIds.has(uId) || validIds.has(sEmail);
+      const txTime = new Date(t.timestamp).getTime();
+      return match && txTime >= cutoff;
+    }).length;
+    return count;
+  }
+
+  getCustomerHistoryStats(userIdOrEmail) {
+    const cleanId = String(userIdOrEmail || '').toLowerCase();
+    const user = this.getUser(userIdOrEmail);
+    const validIds = new Set([cleanId]);
+    if (user) {
+      if (user.id) validIds.add(user.id.toLowerCase());
+      if (user.email) validIds.add(user.email.toLowerCase());
+    }
+
+    const userTxs = this.transactions.filter(t => {
+      const uId = String(t.userId || '').toLowerCase();
+      const sEmail = String(t.senderEmail || '').toLowerCase();
+      return validIds.has(uId) || validIds.has(sEmail);
+    });
+    if (userTxs.length === 0) {
+      return { mean: 450.0, std: 250.0, count: 0 };
+    }
+    const amounts = userTxs.map(t => Number(t.amount) || 0);
+    const mean = amounts.reduce((a, b) => a + b, 0) / amounts.length;
+    const variance = amounts.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / amounts.length;
+    return {
+      mean: Math.round(mean * 100) / 100,
+      std: Math.round(Math.sqrt(variance) * 100) / 100,
+      count: amounts.length
+    };
+  }
 }
 
 const store = new BioVaultStore();

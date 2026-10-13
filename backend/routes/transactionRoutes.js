@@ -3,6 +3,8 @@ const router = express.Router();
 const transactionController = require('../controllers/transactionController');
 const authMiddleware = require('../middleware/authMiddleware');
 
+router.get('/current-location', transactionController.detectCurrentLocation);
+router.post('/evaluate-risk', authMiddleware, transactionController.evaluateRisk);
 router.post('/transfer', authMiddleware, transactionController.createTransaction);
 router.get('/history', authMiddleware, transactionController.getTransactions);
 router.get('/threshold', authMiddleware, transactionController.getThreshold);

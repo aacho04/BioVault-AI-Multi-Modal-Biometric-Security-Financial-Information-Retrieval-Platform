@@ -13,7 +13,7 @@ async function forwardRequest(method, endpoint, req, res) {
       url,
       params: req.query,
       data: req.body,
-      timeout: 5000
+      timeout: 15000
     };
     const response = await axios(config);
     return res.status(response.status).json(response.data);
@@ -51,5 +51,10 @@ router.get('/ir/eval', (req, res) => forwardRequest('get', '/api/ir/eval', req, 
 router.post('/ir/recommendations', (req, res) => forwardRequest('post', '/api/ir/recommendations', req, res));
 router.post('/ir/extract-entities', (req, res) => forwardRequest('post', '/api/ir/extract-entities', req, res));
 router.get('/ir/semantic-graph', (req, res) => forwardRequest('get', '/api/ir/semantic-graph', req, res));
+
+// RAG Banking AI Chatbot & Knowledge Base
+router.post('/ir/chatbot/query', (req, res) => forwardRequest('post', '/api/ir/chatbot/query', req, res));
+router.get('/ir/chatbot/status', (req, res) => forwardRequest('get', '/api/ir/chatbot/status', req, res));
+router.post('/ir/chatbot/reload', (req, res) => forwardRequest('post', '/api/ir/chatbot/reload', req, res));
 
 module.exports = router;
