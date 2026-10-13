@@ -1,0 +1,251 @@
+================================================================================
+          BIOVAULT-AI — CUSTOMER USER MANUAL & OPERATIONS GUIDE
+       Enterprise Multi-Modal Biometric Security & Financial Platform
+================================================================================
+
+Welcome to BioVault-AI! This manual provides step-by-step instructions on 
+how to navigate, configure, and use all platform features, ensure foolproof 
+facial biometric verification, handle security lockdowns, and reach customer 
+support.
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. Platform Overview & Architecture
+2. Getting Started: First-Time Setup & Login
+   2.1. Email One-Time Password (OTP)
+   2.2. FIDO2 / WebAuthn Hardware Passkey
+   2.3. Security Transaction PIN Setup
+   2.4. 128-D Biometric Facial Enrollment
+3. Daily Operations & Core Features
+   3.1. Account Balance & Liquidity Overview
+   3.2. Sending Wire Transfers (₹ INR)
+   3.3. AI Autoencoder Fraud Detection & Anomaly Scoring
+   3.4. High-Value Step-Up Biometric Face Challenge
+   3.5. Customizing High-Value Biometric Trigger Limits
+   3.6. Updating Your Security PIN
+4. Facial Biometric Authentication Guidelines
+   4.1. Camera Alignment & Cyan Guide Oval
+   4.2. Proper Lighting, Distance, and Gaze
+   4.3. Understanding the Euclidean Distance Metric (D < 0.55)
+5. Security Incident Protocol & Account Lockdown
+   5.1. Failed Authentication Thresholds (3 Attempts)
+   5.2. Instant On-Screen Website Block
+   5.3. Unblocking Your Website (Face Authentication ONLY)
+   5.4. Email Security Alert & 5-Hour Freeze
+6. Advanced Intelligence & Search Tools
+   6.1. Financial IR Search (Language Models & Passage Retrieval)
+   6.2. PageRank & Financial Web Crawler
+   6.3. Semantic Knowledge Graph (RDF Triples)
+   6.4. AI Spending Personas (GMM Clustering) & Hybrid Recommendations
+7. Customer Care & Technical Support Contacts
+
+================================================================================
+1. PLATFORM OVERVIEW & ARCHITECTURE
+================================================================================
+BioVault-AI is an enterprise-grade financial intelligence and banking vault 
+combining zero-trust passwordless authentication with real-time deep learning 
+fraud screening.
+
+Key Protection Pillars:
+- Multi-Modal Zero-Trust Security: Email OTP + FIDO2 Passkeys + 128-D Face Cards.
+- Deep Learning Autoencoder: Screens every transaction feature (amount, velocity, 
+  hour, distance) to detect fraudulent anomalies.
+- Strict Biometric Immutability: Enrolled facial templates are cryptographically 
+  hashed with RS256 token verification.
+- Instant Lockdown Shield: Prevents brute-force or unauthorized face scans by 
+  blocking the website right away after multiple failed attempts.
+
+================================================================================
+2. GETTING STARTED: FIRST-TIME SETUP & LOGIN
+================================================================================
+Access the application by navigating to http://localhost:3000 in your browser.
+
+2.1. Email One-Time Password (OTP):
+     - Enter your registered email address (e.g., yourname@domain.com).
+     - Click "Send Verification Code".
+     - Check your inbox for the 6-digit numeric code.
+     - Enter the 6 digits and click "Verify Email OTP".
+
+2.2. FIDO2 / WebAuthn Hardware Passkey:
+     - Click "Register FIDO2 Hardware Passkey".
+     - Your operating system / browser will prompt for biometric confirmation 
+       (Windows Hello, Touch ID, Fingerprint, or USB Security Key).
+     - Once approved, hardware credentials are cryptographically bound.
+
+2.3. Security Transaction PIN Setup:
+     - Set a 4-to-6 digit private numeric PIN (default demo PIN: 1234).
+     - Re-enter to confirm and save your PIN.
+     - This PIN is required to authorize all outgoing financial transfers.
+
+2.4. 128-D Biometric Facial Enrollment:
+     - Allow browser webcam permissions when prompted.
+     - Position your face directly in the center of the dashed oval HUD.
+     - Ensure adequate frontal lighting and look directly into the camera lens.
+     - Click "Enroll Face Template".
+     - The engine extracts a normalized 128-dimensional embedding vector and locks 
+       it under the 180-Day Biometric Immutability Policy.
+
+================================================================================
+3. DAILY OPERATIONS & CORE FEATURES
+================================================================================
+
+3.1. Account Balance & Liquidity Overview:
+     - Your real-time available funds (in ₹ INR) are displayed on the Dashboard.
+     - Recent transactions show real-time clearing statuses, merchants, and AI 
+       reconstruction error logs.
+
+3.2. Sending Wire Transfers (₹ INR):
+     - Scroll to "Simulate a Secure Wire Transfer".
+     - Choose a merchant or clearing institution.
+     - Enter transfer amount (₹) and transaction velocity.
+     - Click "Proceed to Transfer Authorization".
+     - Enter your 4-digit Security PIN in the verification modal.
+
+3.3. AI Autoencoder Fraud Detection & Anomaly Scoring:
+     - Every transfer is evaluated by a Python Deep Autoencoder microservice.
+     - Normal baseline transfers yield a low reconstruction error (L_rec < 0.45) 
+       and clear immediately upon PIN entry.
+     - High-risk transfers (unusual surge amounts, high velocity spikes, or 
+       atypical hours) are flagged with high loss (L_rec >= 0.45).
+
+3.4. High-Value Step-Up Biometric Face Challenge:
+     - Whenever a transfer meets or exceeds your High-Value Trigger Threshold 
+       (default ₹2,000.00), or triggers an AI anomaly:
+     - The platform automatically enforces Stage 2: Biometric Face Scan.
+     - The webcam will activate. Look directly into the cyan oval and click 
+       "Scan Face & Settle Funds".
+     - Funds are released ONLY when the face matches the registered account owner.
+
+3.5. Customizing High-Value Biometric Trigger Limits:
+     - In the Dashboard top banner, click "Set High-Value Limit".
+     - Enter your preferred threshold in ₹ INR (e.g., ₹5,000 or ₹10,000).
+     - Click "Scan Face to Confirm Limit Change".
+     - Face verification is mandatory to prevent unauthorized limit tampering.
+
+3.6. Updating Your Security PIN:
+     - In the Dashboard top banner, click "Update Security PIN".
+     - Complete the 3-step verification:
+       1. Enter Email OTP sent to your registered inbox.
+       2. Scan your face to verify account ownership.
+       3. Enter and confirm your new 4-to-6 digit PIN.
+
+================================================================================
+4. FACIAL BIOMETRIC AUTHENTICATION GUIDELINES
+================================================================================
+To ensure seamless verification and prevent false mismatches, follow these 
+recommended practices:
+
+4.1. Camera Alignment & Cyan Guide Oval:
+     - Sit centered in front of your camera.
+     - Keep your entire face (forehead, eyes, nose, cheeks, mouth, jawline) 
+       inside the cyan dashed oval displayed on the video feed.
+     - Avoid sitting off to the side, as the scanner crops the center region.
+
+4.2. Proper Lighting, Distance, and Gaze:
+     - Ensure bright frontal lighting on your face.
+     - Avoid strong overhead or behind-the-back light sources that cast dark shadows.
+     - Look directly into the camera lens at eye level.
+     - Keep an approximate distance of 1.5 to 2.5 feet (45–75 cm) from the camera.
+
+4.3. Understanding the Euclidean Distance Metric:
+     - The biometric engine calculates the distance D between your live face and 
+       the enrolled template:
+       D = sqrt( sum( (v_enrolled[i] - v_live[i])^2 ) )
+     - A genuine matching face typically scores D between 0.10 and 0.35.
+     - Security Match Threshold: D < 0.55.
+     - If D >= 0.55, the attempt is rejected as an unauthorized mismatch.
+
+================================================================================
+5. SECURITY INCIDENT PROTOCOL & ACCOUNT LOCKDOWN
+================================================================================
+
+5.1. Failed Authentication Thresholds:
+     - If face authentication or PIN entry fails, an attempt counter is tracked.
+     - If biometric authentication fails 3 consecutive times, the system 
+       immediately engages emergency lockdown.
+
+5.2. Instant On-Screen Website Block:
+     - The website is blocked right away on your active screen.
+     - No external redirects or URL forwarding occur.
+     - A full-screen security lockdown alert appears:
+       "🛑 SECURITY LOCKDOWN: WEBSITE BLOCKED"
+     - Outgoing transfers, logins, and settings changes are completely frozen.
+     - New account registrations are strictly disabled.
+
+5.3. Unblocking Your Website (Face Authentication ONLY):
+     - There is NO bypass button or generic reset code.
+     - To lift the lockdown, the legitimate account owner must verify via 
+       Face Authentication only:
+       1. Click "Start Camera" on the lockdown screen.
+       2. Center your face in the cyan oval HUD.
+       3. Click "Authenticate Face to Unblock".
+       4. Once genuine identity is verified (D < 0.55), the lockdown is lifted 
+          instantly right where you are, and normal operations resume.
+
+5.4. Email Security Alert & 5-Hour Freeze:
+     - Upon unauthorized face detection, an incident forensics email is sent to 
+       your registered email address.
+     - It details the timestamp, transaction action, and biometric mismatch score.
+     - If you suspect an intruder, the email includes a 1-click 5-hour freeze 
+       protection link to lock the account.
+
+================================================================================
+6. ADVANCED INTELLIGENCE & SEARCH TOOLS
+================================================================================
+
+6.1. Financial IR Search:
+     - Click "Information Retrieval (IR)" in the navigation bar.
+     - Query regulatory documents, 10-K filings, and market transcripts.
+     - Ranked using Dirichlet Prior & Jelinek-Mercer Language Model smoothing 
+       with sliding-window passage retrieval (200-word granular chunks).
+
+6.2. PageRank & Financial Web Crawler:
+     - View link-based authority rankings computed via PageRank Power Iteration.
+     - Crawls SEC EDGAR, RBI, and financial portals respecting robots.txt.
+
+6.3. Semantic Knowledge Graph (RDF Triples):
+     - Browse extracted financial facts stored as Subject-Predicate-Object triples 
+       (e.g., [Federal Reserve] -> [set_benchmark_rate] -> [5.25%]).
+
+6.4. AI Spending Personas & Hybrid Recommendations:
+     - The Deep Learning Lab clusters spending behavior into multi-modal personas 
+       (Micro-Purchases, Bills, High-Cap Investments) via Gaussian Mixture Models (GMM).
+     - The Hybrid Recommender synthesizes Collaborative Filtering, Content-Based Risk 
+       Alignment, and Regulatory Eligibility constraints.
+
+================================================================================
+7. CUSTOMER CARE & TECHNICAL SUPPORT CONTACTS
+================================================================================
+
+If you experience issues with camera compatibility, account freeze recovery, 
+or suspicious transaction alerts, contact our 24/7 Security Operations Center:
+
+--------------------------------------------------------------------------------
+CONTACT CHANNELS:
+--------------------------------------------------------------------------------
+• 24/7 Security Emergency Hotline:   +91 (022) 8000-VAULT (Toll-Free: 1800-246-8285)
+• Incident Response Email:           security-alerts@biovault.ai
+• General Customer Support:          support@biovault.ai
+• Corporate Officer Liaison:         alex.vance@biovault.ai
+• Portal Administrator:              aaditichoramle14@gmail.com
+• System Operations Center:          omchoramle210@gmail.com
+
+--------------------------------------------------------------------------------
+HEADQUARTERS & PHYSICAL OFFICE:
+--------------------------------------------------------------------------------
+BioVault-AI Technologies India Pvt. Ltd.
+Cyber Security & Advanced Biometrics Division
+Level 14, Tower B, Financial Technology Hub
+Bandra-Kurla Complex (BKC), Mumbai, Maharashtra — 400051, India
+
+--------------------------------------------------------------------------------
+SUPPORT HOURS & RESPONSE COMMITMENT:
+--------------------------------------------------------------------------------
+• Critical Security Incidents / Freeze Support:   24 Hours / 7 Days a Week (Immediate)
+• Account Verification & Hardware Key Support:    Monday – Saturday: 08:00 AM – 10:00 PM IST
+• Average Technical Response Time:                Under 15 Minutes
+
+================================================================================
+                   END OF BIOVAULT-AI CUSTOMER MANUAL
+================================================================================
