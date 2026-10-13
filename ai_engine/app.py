@@ -3,10 +3,16 @@ BioVault-AI: Master AI, Vision, Deep Learning & Information Retrieval Microservi
 Exposes RESTful endpoints for all academic syllabus modules.
 """
 
-from fastapi import FastAPI, Query, Body, HTTPException
+import base64
+import cv2
+import numpy as np
+from fastapi import FastAPI, Query, Body, HTTPException, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
+
+import insightface
+from insightface.app import FaceAnalysis
 
 # Import DL and Vision modules
 from rnn_models import ComputationalGraphUnfolder, BidirectionalRNN, GradientVanishingExplodingAnalyzer
@@ -268,14 +274,14 @@ def root():
     return {
         "service": "BioVault-AI Deep Learning & Information Retrieval Platform",
         "status": "ONLINE",
-        "syllabus_modules_active": [
-            "Chapter 1: Sequence Learning, RNNs, LSTMs, GRUs, Computational Graphs",
-            "Chapter 2 & Unit V: Autoencoders (CAE, VAE, DAE, Deep AE Anomaly Detection)",
-            "Chapter 3: Computer Vision (SSD MobileNet V1, 68 Landmarks, ResNet-34)",
-            "Unit IV: Language Models for IR (Multinomial, Dirichlet, JM, DFR, Passage Retrieval)",
-            "Unit V: Web Crawling (BS4/Scrapy), MapReduce, PageRank, Parallel IR, BM25 / MAP / NDCG",
-            "Unit VI: Recommender Systems (CF, CB, KB), NER, Semantic Web RDF Triples",
-            "Case Studies: Self-Driving Vehicles, Automatic Image Captioning, Network Anomaly Detection"
+        "modules_active": [
+            "Sequence Learning, RNNs, LSTMs, GRUs, Computational Graphs",
+            "Autoencoders (CAE, VAE, DAE, Deep AE Anomaly Detection)",
+            "Computer Vision (SSD MobileNet V1, 68 Landmarks, ResNet-34)",
+            "Language Models for IR (Multinomial, Dirichlet, JM, DFR, Passage Retrieval)",
+            "Web Crawling (BS4/Scrapy), MapReduce, PageRank, Parallel IR, BM25 / MAP / NDCG",
+            "Recommender Systems (CF, CB, KB), NER, Semantic Web RDF Triples",
+            "Autonomous Perception & Captioning Case Studies"
         ]
     }
 
