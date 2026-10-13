@@ -65,11 +65,6 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
   // 5-Hour Security Lockdown State - Website Blocked right away
   const [isWebsiteLocked, setIsWebsiteLocked] = useState(false);
   const [lockoutData, setLockoutData] = useState(null);
-  const [unblockCameraActive, setUnblockCameraActive] = useState(false);
-  const [isVerifyingUnblockFace, setIsVerifyingUnblockFace] = useState(false);
-  const [unblockStatus, setUnblockStatus] = useState(null);
-  const unblockVideoRef = useRef(null);
-  const unblockStreamRef = useRef(null);
 
   const checkWebsiteLockStatus = async () => {
     try {
@@ -85,89 +80,6 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
         }
       }
     } catch (e) {}
-  };
-
-  const startUnblockCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
-      });
-      unblockStreamRef.current = stream;
-      if (unblockVideoRef.current) {
-        unblockVideoRef.current.srcObject = stream;
-        unblockVideoRef.current.play();
-      }
-      setUnblockCameraActive(true);
-      setUnblockStatus(null);
-    } catch (e) {
-      setUnblockStatus({ type: 'error', text: 'Camera access denied. Please allow camera permissions to verify identity and unblock.' });
-    }
-  };
-
-  const stopUnblockCamera = () => {
-    if (unblockStreamRef.current) {
-      unblockStreamRef.current.getTracks().forEach(track => track.stop());
-      unblockStreamRef.current = null;
-    }
-    setUnblockCameraActive(false);
-  };
-
-  useEffect(() => {
-    if (isWebsiteLocked && !unblockCameraActive) {
-      startUnblockCamera();
-    }
-  }, [isWebsiteLocked]);
-
-  const handleVerifyFaceToUnblock = async () => {
-    setIsVerifyingUnblockFace(true);
-    setUnblockStatus(null);
-
-    try {
-      if (!unblockVideoRef.current) {
-        setUnblockStatus({ type: 'error', text: 'Camera not ready. Please start camera first.' });
-        setIsVerifyingUnblockFace(false);
-        return;
-      }
-
-      let candidateDescriptor = await extractBiometricVectorWithJitter(unblockVideoRef.current, 3);
-      if (!candidateDescriptor) {
-        candidateDescriptor = extractBiometricVectorFromVideo(unblockVideoRef.current);
-      }
-      if (!candidateDescriptor) {
-        setUnblockStatus({ type: 'error', text: 'Face not detected in frame. Please look directly into the camera oval.' });
-        setIsVerifyingUnblockFace(false);
-        return;
-      }
-
-      const targetEmail = userEmail || 'alex.vance@biovault.ai';
-      const res = await fetch('/api/auth/unlock-with-face', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: targetEmail,
-          userId: 'usr_biovault_01',
-          candidateDescriptor,
-          threshold: 0.55
-        })
-      });
-      const data = await res.json();
-
-      if (res.ok && data.verified) {
-        stopUnblockCamera();
-        setIsWebsiteLocked(false);
-        setLockoutData(null);
-        setUnblockStatus(null);
-      } else {
-        setUnblockStatus({
-          type: 'error',
-          text: data.error || `❌ Biometric Mismatch: Distance (D=${data.euclideanDistance || 'High'}) ≥ 0.55. Unauthorized face detected! Website remains strictly locked.`
-        });
-      }
-    } catch (err) {
-      setUnblockStatus({ type: 'error', text: 'Verification error: ' + err.message });
-    } finally {
-      setIsVerifyingUnblockFace(false);
-    }
   };
 
   // Load transactions, recommendations, stored threshold, and check lock status on mount
@@ -874,161 +786,51 @@ export default function Dashboard({ onRequireStepUpAuth, userEmail = '' }) {
           <p style={{
             color: '#cbd5e1',
             fontSize: '0.92rem',
-            maxWidth: 520,
+            maxWidth: 500,
             margin: '0 auto 1.5rem auto',
             lineHeight: 1.6
           }}>
-            Multiple failed biometric authentication attempts were detected.
+            Multiple failed authentication attempts were detected.
             This website has been <strong>blocked right away</strong> to protect your funds and financial data.
-            Registration is strictly disabled. You can unblock this website using <strong>Face Authentication only</strong>.
+            All transfers, account changes, and biometric face authentication are strictly disabled during this freeze.
           </p>
 
           <div style={{
             background: 'rgba(3, 7, 18, 0.85)',
             border: '1px solid rgba(239, 68, 68, 0.35)',
             borderRadius: '10px',
-            padding: '1rem',
+            padding: '1.25rem',
             maxWidth: 480,
             margin: '0 auto 1.5rem auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between'
+            textAlign: 'left'
           }}>
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lock Protocol</div>
-              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#f87171' }}>5-Hour Biometric Freeze</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Lock Protocol:</span>
+              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#f87171' }}>● 5-Hour Strict Security Freeze</span>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Auto-Unlock</div>
-              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fbbf24', fontFamily: 'JetBrains Mono, monospace' }}>
-                ~{lockoutData?.remainingHours || 5} Hours
-              </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Automatic Unblock:</span>
+              <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fbbf24', fontFamily: 'JetBrains Mono, monospace' }}>
+                ~{lockoutData?.remainingHours || 5} Hours Remaining
+              </span>
+            </div>
+            <div style={{ fontSize: '0.76rem', color: '#94a3b8', lineHeight: 1.5 }}>
+              🔒 <strong>Security Policy:</strong> Face authentication retry is permanently disabled during active lockdown to prevent brute-force attacks.
             </div>
           </div>
 
-          {/* Live Face Authentication Unblock Section */}
           <div style={{
-            background: 'rgba(15, 23, 42, 0.8)',
-            border: '1px solid rgba(6, 182, 212, 0.3)',
-            borderRadius: '12px',
-            padding: '1.25rem',
-            marginBottom: '1.5rem'
+            background: 'rgba(239, 68, 68, 0.12)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '8px',
+            padding: '0.95rem 1.25rem',
+            fontSize: '0.82rem',
+            color: '#fca5a5',
+            lineHeight: 1.5,
+            maxWidth: 480,
+            margin: '0 auto'
           }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-              color: '#38bdf8',
-              fontSize: '0.88rem',
-              fontWeight: 700,
-              marginBottom: '1rem'
-            }}>
-              <Camera size={18} /> Face Authentication Unblock (Registered Owner Only)
-            </div>
-
-            {/* Video Preview with Cyan Oval Guide */}
-            <div style={{
-              position: 'relative',
-              width: '100%',
-              maxWidth: 380,
-              aspectRatio: '4/3',
-              borderRadius: '10px',
-              overflow: 'hidden',
-              margin: '0 auto 1rem auto',
-              background: '#020617',
-              border: '1px solid rgba(255, 255, 255, 0.1)'
-            }}>
-              <video
-                ref={unblockVideoRef}
-                autoPlay
-                playsInline
-                muted
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  transform: 'scaleX(-1)'
-                }}
-              />
-              {/* Cyan Dotted Oval Guide HUD */}
-              <div style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: '60%',
-                height: '76%',
-                border: '2px dashed #06b6d4',
-                borderRadius: '50%',
-                pointerEvents: 'none',
-                boxShadow: '0 0 15px rgba(6, 182, 212, 0.25)'
-              }} />
-              <div style={{
-                position: 'absolute',
-                bottom: 8,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: 'rgba(0,0,0,0.75)',
-                color: '#38bdf8',
-                fontSize: '0.72rem',
-                padding: '4px 10px',
-                borderRadius: '20px',
-                whiteSpace: 'nowrap'
-              }}>
-                Look directly into camera oval to unblock
-              </div>
-            </div>
-
-            {unblockStatus && (
-              <div style={{
-                padding: '0.65rem 0.85rem',
-                borderRadius: '8px',
-                background: unblockStatus.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                border: `1px solid ${unblockStatus.type === 'error' ? '#ef4444' : '#10b981'}`,
-                color: unblockStatus.type === 'error' ? '#f87171' : '#34d399',
-                fontSize: '0.82rem',
-                marginBottom: '1rem',
-                textAlign: 'center'
-              }}>
-                {unblockStatus.text}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
-              {!unblockCameraActive && (
-                <button
-                  type="button"
-                  onClick={startUnblockCamera}
-                  className="btn-secondary"
-                  style={{ padding: '0.75rem 1.25rem', fontSize: '0.88rem' }}
-                >
-                  <Camera size={16} /> Start Camera
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleVerifyFaceToUnblock}
-                disabled={isVerifyingUnblockFace}
-                className="btn-primary"
-                style={{
-                  background: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)',
-                  padding: '0.75rem 1.5rem',
-                  fontSize: '0.9rem',
-                  fontWeight: 700
-                }}
-              >
-                {isVerifyingUnblockFace ? (
-                  <>
-                    <RefreshCw size={16} className="animate-spin" /> Verifying Biometric Face...
-                  </>
-                ) : (
-                  <>
-                    <Eye size={16} /> Authenticate Face to Unblock
-                  </>
-                )}
-              </button>
-            </div>
+            For emergency assistance or manual verification, please contact our 24/7 Security Operations Center at <strong>+91 (022) 8000-VAULT</strong> or email <strong>security-alerts@biovault.ai</strong>.
           </div>
         </div>
       </div>

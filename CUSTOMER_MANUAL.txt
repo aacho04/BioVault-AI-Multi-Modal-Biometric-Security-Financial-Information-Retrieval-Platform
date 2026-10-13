@@ -31,7 +31,7 @@ TABLE OF CONTENTS
 5. Security Incident Protocol & Account Lockdown
    5.1. Failed Authentication Thresholds (3 Attempts)
    5.2. Instant On-Screen Website Block
-   5.3. Unblocking Your Website (Face Authentication ONLY)
+   5.3. Lockdown Duration & Strict Security Freeze (No Retry Allowed)
    5.4. Email Security Alert & 5-Hour Freeze
 6. Advanced Intelligence & Search Tools
    6.1. Financial IR Search (Language Models & Passage Retrieval)
@@ -173,15 +173,17 @@ recommended practices:
      - Outgoing transfers, logins, and settings changes are completely frozen.
      - New account registrations are strictly disabled.
 
-5.3. Unblocking Your Website (Face Authentication ONLY):
-     - There is NO bypass button or generic reset code.
-     - To lift the lockdown, the legitimate account owner must verify via 
-       Face Authentication only:
-       1. Click "Start Camera" on the lockdown screen.
-       2. Center your face in the cyan oval HUD.
-       3. Click "Authenticate Face to Unblock".
-       4. Once genuine identity is verified (D < 0.55), the lockdown is lifted 
-          instantly right where you are, and normal operations resume.
+5.3. Strict Lockdown Policy (Face Authentication Retry Permanently Disabled):
+     - Once the website is blocked, ALL biometric authentication retry options 
+       are permanently removed from the screen to protect against repeated 
+       brute-force and automated spoof attacks.
+     - The website remains completely locked and inaccessible until the 5-Hour 
+       Security Freeze timer expires automatically.
+     - There are NO on-screen unblock buttons, camera previews, or bypass codes.
+     - For expedited or emergency unfreezes, account holders must contact the 
+       24/7 Security Operations Center with out-of-band identity verification:
+       * Hotline: +91 (022) 8000-VAULT
+       * Email: security-alerts@biovault.ai
 
 5.4. Email Security Alert & 5-Hour Freeze:
      - Upon unauthorized face detection, an incident forensics email is sent to 
