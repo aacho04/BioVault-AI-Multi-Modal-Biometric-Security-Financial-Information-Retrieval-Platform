@@ -26,6 +26,22 @@
   box-sizing: border-box;
 }
 
+/* Universal Dark Input & Autofill Styling */
+input, select, textarea {
+  color-scheme: dark !important;
+  background-color: #070d18 !important;
+  color: #f8fafc !important;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 40px #070d18 inset !important;
+  -webkit-text-fill-color: #f8fafc !important;
+  caret-color: #38bdf8 !important;
+}
+
 body {
   background-color: var(--bg-base);
   color: var(--text-primary);

@@ -71,7 +71,7 @@ export default function IRSearch() {
           Information Retrieval, Web Crawling & Semantic Web Console
         </h2>
         <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-          Unit IV (Language Models & Smoothing), Unit V (Crawling, MapReduce & PageRank), Unit VI (Semantic Web RDF Triples & NER).
+          Statistical Language Models, Financial Web Crawler, PageRank Authority, and Semantic Knowledge Graphs.
         </p>
       </div>
 
@@ -82,7 +82,7 @@ export default function IRSearch() {
           className={`btn-secondary ${activeTab === 'search' ? 'glass-panel-active' : ''}`}
           style={{ borderColor: activeTab === 'search' ? '#8b5cf6' : undefined }}
         >
-          <Search size={16} /> Unit IV: Language Model Passage Search
+          <Search size={16} /> Language Model Passage Search
         </button>
 
         <button
@@ -90,7 +90,7 @@ export default function IRSearch() {
           className={`btn-secondary ${activeTab === 'pagerank' ? 'glass-panel-active' : ''}`}
           style={{ borderColor: activeTab === 'pagerank' ? '#06b6d4' : undefined }}
         >
-          <Globe size={16} /> Unit V: Crawler & PageRank Graph
+          <Globe size={16} /> Web Crawler & PageRank Graph
         </button>
 
         <button
@@ -98,7 +98,7 @@ export default function IRSearch() {
           className={`btn-secondary ${activeTab === 'semantic' ? 'glass-panel-active' : ''}`}
           style={{ borderColor: activeTab === 'semantic' ? '#10b981' : undefined }}
         >
-          <Network size={16} /> Unit VI: Semantic Web RDF Triples
+          <Network size={16} /> Semantic Web RDF Triples
         </button>
 
         <button
@@ -106,7 +106,7 @@ export default function IRSearch() {
           className={`btn-secondary ${activeTab === 'ner' ? 'glass-panel-active' : ''}`}
           style={{ borderColor: activeTab === 'ner' ? '#f59e0b' : undefined }}
         >
-          <FileText size={16} /> Unit VI: Financial Named Entity Recognition
+          <FileText size={16} /> Financial Named Entity Recognition
         </button>
       </div>
 

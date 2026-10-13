@@ -80,7 +80,7 @@ export default function DeepLearningLab() {
           Deep Learning, Vision & Sequence Intelligence Laboratory
         </h2>
         <p style={{ color: '#94a3b8', fontSize: '0.9rem' }}>
-          Interactive Academic Syllabus Demonstrator: Computational Graphs, Gated LSTMs, Autoencoders, and Case Studies.
+          Interactive Deep Learning Suite: Computational Graphs, Gated LSTMs, Autoencoders, and Case Studies.
         </p>
       </div>
 
@@ -91,7 +91,7 @@ export default function DeepLearningLab() {
           className={`btn-secondary ${activeModule === 'rnn' ? 'glass-panel-active' : ''}`}
           style={{ borderColor: activeModule === 'rnn' ? '#06b6d4' : undefined }}
         >
-          <Activity size={16} /> Chapter 1: RNNs, Graphs & Gradients
+          <Activity size={16} /> RNNs, Computational Graphs & Gradients
         </button>
 
         <button
@@ -99,7 +99,7 @@ export default function DeepLearningLab() {
           className={`btn-secondary ${activeModule === 'lstm' ? 'glass-panel-active' : ''}`}
           style={{ borderColor: activeModule === 'lstm' ? '#10b981' : undefined }}
         >
-          <Eye size={16} /> Chapter 1: LSTM Gating & Liveness
+          <Eye size={16} /> LSTM & GRU Gating Liveness
         </button>
 
         <button
@@ -107,7 +107,7 @@ export default function DeepLearningLab() {
           className={`btn-secondary ${activeModule === 'autoencoders' ? 'glass-panel-active' : ''}`}
           style={{ borderColor: activeModule === 'autoencoders' ? '#8b5cf6' : undefined }}
         >
-          <Sliders size={16} /> Chapter 2 & Unit V: Autoencoders Suite
+          <Sliders size={16} /> Autoencoders Suite (CAE, VAE, DAE)
         </button>
 
         <button
@@ -115,7 +115,7 @@ export default function DeepLearningLab() {
           className={`btn-secondary ${activeModule === 'case-studies' ? 'glass-panel-active' : ''}`}
           style={{ borderColor: activeModule === 'case-studies' ? '#f59e0b' : undefined }}
         >
-          <Car size={16} /> Unit VI: Self-Driving & Captioning Case Studies
+          <Car size={16} /> Autonomous Driving & Captioning Case Studies
         </button>
       </div>
 
