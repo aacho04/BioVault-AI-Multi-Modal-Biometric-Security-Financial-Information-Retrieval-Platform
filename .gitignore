@@ -4,4 +4,11 @@ venv/
 __pycache__/
 *.pyc
 .env
+.env.*
 .DS_Store
+
+# Cryptographic Keys (RS256 Private & Public Keypair)
+backend/keys/
+keys/
+*.key
+*.pem

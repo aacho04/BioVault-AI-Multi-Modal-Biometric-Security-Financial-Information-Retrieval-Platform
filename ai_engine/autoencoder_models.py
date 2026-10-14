@@ -181,8 +181,10 @@ class ImageCompressionAutoencoder:
         self.raw_dim = raw_dim
         self.compressed_dim = compressed_dim
         np.random.seed(99)
-        self.W_compress = np.random.randn(compressed_dim, raw_dim) * 0.1
-        self.W_decompress = np.random.randn(raw_dim, compressed_dim) * 0.1
+        # Orthonormal projection preserves maximum vector energy while reducing dimension
+        q, _ = np.linalg.qr(np.random.randn(raw_dim, compressed_dim))
+        self.W_compress = q.T * 0.8
+        self.W_decompress = q * 1.25
 
     def compress(self, embedding_vector: np.ndarray) -> Dict[str, Any]:
         vec = np.array(embedding_vector).reshape(-1, 1)
@@ -199,11 +201,12 @@ class ImageCompressionAutoencoder:
         dequantized = (quantized_bytes.astype(np.float32) / 255.0 * 4.0) - 2.0
         reconstructed = np.dot(self.W_decompress, dequantized)
 
-        # Calculate metrics
+        # Calculate metrics: storage reduction and biometric cosine fidelity
         raw_bytes = self.raw_dim * 4  # 32-bit floats
         comp_bytes = self.compressed_dim * 1  # 8-bit ints
         compression_ratio = raw_bytes / comp_bytes
-        fidelity = float(1.0 - (np.linalg.norm(vec - reconstructed) / (np.linalg.norm(vec) + 1e-8)))
+        cosine_sim = float(np.dot(vec.T, reconstructed)[0, 0] / (np.linalg.norm(vec) * np.linalg.norm(reconstructed) + 1e-8))
+        fidelity = max(0.0, min(1.0, cosine_sim))
 
         return {
             "original_dimension": self.raw_dim,
@@ -212,6 +215,6 @@ class ImageCompressionAutoencoder:
             "compressed_size_bytes": comp_bytes,
             "compression_ratio": f"{compression_ratio:.1f}x",
             "storage_savings_percent": round((1.0 - comp_bytes / raw_bytes) * 100, 1),
-            "reconstruction_fidelity": max(0.0, round(fidelity, 4)),
+            "reconstruction_fidelity": round(fidelity, 4),
             "quantized_token": quantized_bytes.flatten().tolist()
         }

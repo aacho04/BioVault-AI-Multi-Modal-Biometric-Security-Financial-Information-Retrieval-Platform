@@ -11,8 +11,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 
-import insightface
-from insightface.app import FaceAnalysis
+try:
+    import insightface
+    from insightface.app import FaceAnalysis
+except ImportError:
+    insightface = None
+    FaceAnalysis = None
 
 # Import DL and Vision modules
 from rnn_models import ComputationalGraphUnfolder, BidirectionalRNN, GradientVanishingExplodingAnalyzer
@@ -85,8 +89,14 @@ mr_indexer.build_index_from_documents(initial_crawl["crawled_documents"])
 # ==========================================
 
 @app.post("/api/ml/rnn/unfold")
-def unfold_graph(sequence: Optional[List[List[float]]] = None):
+def unfold_graph(payload: Optional[Any] = Body(None)):
     """Unfolds the computational graph across T discrete time slices."""
+    sequence = None
+    if isinstance(payload, list):
+        sequence = payload
+    elif isinstance(payload, dict):
+        sequence = payload.get("sequence")
+
     if not sequence:
         # Default 10-step sequence with 6 features
         import numpy as np
@@ -124,25 +134,40 @@ def evaluate_liveness(payload: Dict[str, Any] = Body(...)):
 # ==========================================
 
 @app.post("/api/ml/autoencoder/denoise")
-def denoise_sample(clean_vector: Optional[List[float]] = None):
+def denoise_sample(payload: Optional[Any] = Body(None)):
     """Restores clean signal from noise using Denoising Autoencoder."""
+    clean_vector = None
+    if isinstance(payload, list):
+        clean_vector = payload
+    elif isinstance(payload, dict):
+        clean_vector = payload.get("clean_vector") or payload.get("vector")
     if not clean_vector:
         clean_vector = [0.2, 0.5, 0.8, 0.1, 0.9, 0.4, 0.3, 0.7, 0.6, 0.2, 0.1, 0.8, 0.5, 0.4, 0.9, 0.3]
     return denoiser.denoise(clean_vector)
 
 
 @app.post("/api/ml/autoencoder/vae")
-def vae_sample(vector: Optional[List[float]] = None):
+def vae_sample(payload: Optional[Any] = Body(None)):
     """Passes vector through VAE with reparameterization trick (mu + sigma * eps)."""
-    import numpy as np
+    vector = None
+    if isinstance(payload, list):
+        vector = payload
+    elif isinstance(payload, dict):
+        vector = payload.get("vector")
     if not vector:
         vector = [0.5] * 16
+    import numpy as np
     return vae.forward(np.array(vector))
 
 
 @app.post("/api/ml/autoencoder/compress")
-def compress_features(vector: Optional[List[float]] = None):
+def compress_features(payload: Optional[Any] = Body(None)):
     """Compresses 128-D biometric vector into 16 quantized bytes."""
+    vector = None
+    if isinstance(payload, list):
+        vector = payload
+    elif isinstance(payload, dict):
+        vector = payload.get("vector")
     if not vector:
         import numpy as np
         vector = np.random.randn(128).tolist()

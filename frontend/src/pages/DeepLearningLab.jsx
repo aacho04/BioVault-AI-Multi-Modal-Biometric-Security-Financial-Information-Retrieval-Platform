@@ -8,6 +8,7 @@ export default function DeepLearningLab() {
   const [spectralRadius, setSpectralRadius] = useState(0.85);
   const [gradientTrace, setGradientTrace] = useState(null);
   const [unfoldedTrace, setUnfoldedTrace] = useState(null);
+  const [isUnfolding, setIsUnfolding] = useState(false);
 
   // Autoencoders state
   const [daeResult, setDaeResult] = useState(null);
@@ -20,16 +21,29 @@ export default function DeepLearningLab() {
 
   // Test RNN Unfolding
   const runRnnUnfold = async () => {
+    setIsUnfolding(true);
     try {
-      const res = await fetch('/api/ml/rnn/unfold', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
-      const data = await res.json();
-      setUnfoldedTrace(data);
+      const res = await fetch('/api/ml/rnn/unfold', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.steps) {
+          setUnfoldedTrace(data);
+        }
+      }
 
       const gradRes = await fetch(`/api/ml/rnn/gradient-analysis?length=20&spectral_radius=${spectralRadius}`);
-      const gradData = await gradRes.json();
-      setGradientTrace(gradData);
+      if (gradRes.ok) {
+        const gradData = await gradRes.json();
+        setGradientTrace(gradData);
+      }
     } catch (e) {
-      console.error(e);
+      console.error('RNN Unfold Error:', e);
+    } finally {
+      setIsUnfolding(false);
     }
   };
 
@@ -130,20 +144,33 @@ export default function DeepLearningLab() {
               Represents recurrent loops as acyclic computational graphs across time steps t ∈ [1, T].
             </p>
 
-            <button onClick={runRnnUnfold} className="btn-primary" style={{ marginBottom: '1rem' }}>
-              <Play size={16} /> Unfold Recurrent Graph & Simulate BPTT
+            <button
+              onClick={runRnnUnfold}
+              disabled={isUnfolding}
+              className="btn-primary"
+              style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              {isUnfolding ? <span className="animate-spin">🔄</span> : <Play size={16} />}
+              {isUnfolding ? 'Computing Forward Passes...' : 'Unfold Recurrent Graph & Simulate BPTT'}
             </button>
 
-            {unfoldedTrace && (
-              <div style={{ background: 'rgba(0,0,0,0.4)', padding: '0.85rem', borderRadius: '8px', fontSize: '0.75rem' }}>
-                <div style={{ color: '#38bdf8', marginBottom: '0.35rem', fontWeight: 600 }}>
-                  Unfolded Time Steps: {unfoldedTrace.time_steps_unfolded}
+            {unfoldedTrace && unfoldedTrace.steps && (
+              <div style={{ background: 'rgba(0,0,0,0.5)', padding: '0.85rem', borderRadius: '8px', fontSize: '0.75rem', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ color: '#38bdf8', fontWeight: 600 }}>
+                    ⚡ Successfully Unfolded {unfoldedTrace.time_steps_unfolded} Time Slices
+                  </span>
+                  <span style={{ color: '#10b981', fontSize: '0.7rem', background: 'rgba(16, 185, 129, 0.15)', padding: '0.15rem 0.45rem', borderRadius: '4px' }}>
+                    Final ||h_T||: {unfoldedTrace.final_state_norm.toFixed(4)}
+                  </span>
                 </div>
-                {unfoldedTrace.steps.slice(0, 4).map((s, idx) => (
-                  <div key={idx} className="font-mono" style={{ color: '#cbd5e1', marginBottom: '0.2rem' }}>
-                    t={s.time_step}: ||h_t|| = {s.hidden_state_norm.toFixed(4)} | {s.unfolded_node}
-                  </div>
-                ))}
+                <div style={{ maxHeight: 180, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                  {unfoldedTrace.steps.map((s, idx) => (
+                    <div key={idx} className="font-mono" style={{ color: '#cbd5e1', background: 'rgba(255,255,255,0.03)', padding: '0.3rem 0.5rem', borderRadius: '4px', fontSize: '0.72rem' }}>
+                      <span style={{ color: '#38bdf8', fontWeight: 600 }}>t={s.time_step}</span> | ||h_t|| = {s.hidden_state_norm.toFixed(4)} | <span style={{ color: '#94a3b8' }}>{s.unfolded_node}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
